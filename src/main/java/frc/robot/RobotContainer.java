@@ -7,6 +7,9 @@
 
 package frc.robot;
 
+import static frc.robot.subsystems.vision.VisionConstants.camera0Name;
+import static frc.robot.subsystems.vision.VisionConstants.robotToCamera0;
+
 import com.pathplanner.lib.auto.AutoBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -19,6 +22,12 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.DriveCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.*;
+import frc.robot.subsystems.turret.ShooterSubsystem;
+import frc.robot.subsystems.turret.turrettestingSubsystem;
+import frc.robot.subsystems.vision.Vision;
+import frc.robot.subsystems.vision.VisionIO;
+import frc.robot.subsystems.vision.VisionIOLimelight;
+import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 /**
@@ -30,9 +39,13 @@ import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 public class RobotContainer {
   // Subsystems
   private final Drive drive;
+  private final Vision vision;
+  public final ShooterSubsystem shooter = new ShooterSubsystem();
+  private final turrettestingSubsystem turret;
 
   // Controller
   private final CommandPS5Controller controller = new CommandPS5Controller(0);
+  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(1);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
@@ -51,6 +64,12 @@ public class RobotContainer {
                 new ModuleIOTalonFX(TunerConstants.FrontRight),
                 new ModuleIOTalonFX(TunerConstants.BackLeft),
                 new ModuleIOTalonFX(TunerConstants.BackRight));
+
+        vision =
+            new Vision(
+                drive::addVisionMeasurement,
+                new VisionIOLimelight(camera0Name, drive::getRotation));
+        turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
 
         // The ModuleIOTalonFXS implkl; p[,,,,,........;;;''''''''''''
         //
@@ -106,6 +125,12 @@ public class RobotContainer {
                 new ModuleIOSim(TunerConstants.FrontRight),
                 new ModuleIOSim(TunerConstants.BackLeft),
                 new ModuleIOSim(TunerConstants.BackRight));
+
+        vision =
+            new Vision(
+                drive::addVisionMeasurement,
+                new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose));
+        turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
 
       default:
@@ -117,6 +142,9 @@ public class RobotContainer {
                 new ModuleIO() {},
                 new ModuleIO() {},
                 new ModuleIO() {});
+
+        vision = new Vision(drive::addVisionMeasurement, new VisionIO() {}, new VisionIO() {});
+        turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
     }
 
@@ -159,14 +187,14 @@ public class RobotContainer {
             () -> -controller.getRightX()));
 
     // Lock to 0° when A button is held
-    controller
-        .triangle()
-        .whileTrue(
-            DriveCommands.joystickDriveAtAngle(
-                drive,
-                () -> -controller.getLeftY(),
-                () -> -controller.getLeftX(),
-                () -> Rotation2d.kZero));
+    //    controller
+    //        .cross()
+    //        .whileTrue(
+    //            DriveCommands.joystickDriveAtAngle(
+    //                drive,
+    //                () -> -controller.getLeftY(),
+    //                () -> -controller.getLeftX(),
+    //                () -> Rotation2d.kZero));
 
     // Switch to X pattern when X button is pressed
     controller.cross().onTrue(Commands.runOnce(drive::stopWithX, drive));
@@ -181,6 +209,27 @@ public class RobotContainer {
                             new Pose2d(drive.getPose().getTranslation(), Rotation2d.kZero)),
                     drive)
                 .ignoringDisable(true));
+
+    ps5Controller
+        .circle()
+        .onTrue(
+            Commands.runOnce(
+                () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+    ps5Controller
+        .R1()
+        .onTrue(
+            Commands.runOnce(
+                () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE), shooter));
+    ps5Controller
+        .L1()
+        .onTrue(
+            Commands.runOnce(
+                () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE_ACCURATE),
+                shooter));
+    ps5Controller
+        .triangle()
+        .onTrue(
+            Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
   }
 
   /**
