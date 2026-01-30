@@ -5,6 +5,7 @@ import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.controller.BangBangController;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.math.controller.SimpleMotorFeedforward;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
@@ -58,12 +59,13 @@ public class ShooterSubsystem extends SubsystemBase {
   SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
   PIDController velocityPID = new PIDController(kP, kI, kD);
   PIDController spinUpPID = new PIDController(kP_SPIN_UP, kI_SPIN_UP, kD_SPIN_UP);
+  BangBangController bangBangController = new BangBangController();
 
   // config
   private final double overspinFactor = 1.0;
   private final double rpmRapidFireTolerance = 200;
   private final double rpmAccurateTolerance = 50;
-  boolean shotRecentlyFired = false;
+  boolean shotsFired = false; //if shot recently fired then get the bang bang out
   private double lastTargetRPS = 0.0;
   private final VoltageOut voltageRequest = new VoltageOut(0);
   private double lastShotTime = 0.0;
@@ -78,7 +80,7 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public ShooterSubsystem() {
     var config = new TalonFXConfiguration();
-    config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+    config.MotorOutput.NeutralMode = NeutralModeValue.Coast; //if its breaking the it might fight the bangbang controller and fry stuff
     config.CurrentLimits.SupplyCurrentLimit = 40.0;
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
     shooterMotor.getConfigurator().apply(config);
@@ -107,13 +109,13 @@ public class ShooterSubsystem extends SubsystemBase {
     double rpmSlope = (currentRPM - lastRPM) / 0.02;
 
     if (rpmSlope < -7500) {
-      shotRecentlyFired = true;
+      shotsFired = true;
       lastShotTime = currentTime.getAsDouble();
     }
 
-    if (shotRecentlyFired && ((currentTime.getAsDouble() - lastShotTime) > 0.2)
+    if (shotsFired && ((currentTime.getAsDouble() - lastShotTime) > 0.2)
         || currentRPS >= targetRPS - 20.0 / 60.0) {
-      shotRecentlyFired = false;
+      shotsFired = false;
     }
 
     lastRPM = currentRPM;
@@ -141,7 +143,7 @@ public class ShooterSubsystem extends SubsystemBase {
         shooterMotor.setControl(voltageRequest.withOutput(0.0));
         break;
     }
-    System.out.println(currentRPM + " " + shotRecentlyFired);
+    System.out.println(currentRPM + " " + shotsFired);
     //    System.out.println(
     //        "Shooter State: "
     //            + state
@@ -164,19 +166,23 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public double setShooterRPM(double targetRPS, double currentRPS, PIDController PID) {
     //    double accelleration = (targetRPS - lastTargetRPS) / 0.02;
-    if (shotRecentlyFired && currentRPS < targetRPS - 50.0 / 60.0) {
-      PID.setP(kP_BOOST);
-      PID.setD(kD_BOOST);
+    double output = 0.0;
+    if (shotsFired && currentRPS < targetRPS - 50.0 / 60.0) {
+//      PID.setP(kP_BOOST);
+//      PID.setD(kD_BOOST);
+      double bangBangVolts = bangBangController.calculate(currentRPS, targetRPS) * 12.0;
+      double ffVolts = feedforward.calculate(targetRPS);
+      // maybe add deadband here for osolation?
+      output = ffVolts + bangBangVolts;
       System.out.println("BOOST");
     } else {
       PID.setP(kP_SPIN_UP);
       PID.setD(kD_SPIN_UP);
+      double ffVolts = feedforward.calculate(targetRPS);
+      // maybe add deadband here for osolation?
+      double pidVolts = PID.calculate(currentRPS, targetRPS);
+      output = ffVolts + pidVolts;
     }
-
-    double ffVolts = feedforward.calculate(targetRPS);
-    // maybe add deadband here for osolation?
-    double pidVolts = PID.calculate(currentRPS, targetRPS);
-    double output = ffVolts + pidVolts;
 
     lastTargetRPS = targetRPS;
     output = MathUtil.clamp(output, -12.0, 12.0);
