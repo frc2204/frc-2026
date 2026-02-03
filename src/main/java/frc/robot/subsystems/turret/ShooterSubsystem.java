@@ -3,11 +3,13 @@ package frc.robot.subsystems.turret;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.BangBangController;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.math.controller.SimpleMotorFeedforward;
+import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -33,9 +35,10 @@ public class ShooterSubsystem extends SubsystemBase {
 
   private final DoubleSupplier currentTime = Timer::getFPGATimestamp;
 
-  static final double kS = 0.2; // static friction (volts)
+  static final double kS = 0.16; // static friction (volts)
   static final double kV =
-      0.114; // volts per RPS //0.10475 to tune use dutycycleout run it to 70 rps and kV = voltage /
+      0.116363636; // volts per RPS //0.10475 to tune use dutycycleout run it to 70 rps and kV =
+  // voltage /
   // 70 RPS
   static final double kA = 0.001; // volts per RPS^2
 
@@ -46,9 +49,12 @@ public class ShooterSubsystem extends SubsystemBase {
   double kP_BOOST = 2.0; // ~2x normal
   double kD_BOOST = 0.002;
 
-  static final double kP_SPIN_UP = 0.05; // 0.01
+  static final double kP_SPIN_UP = 0.01; // 0.01
   static final double kI_SPIN_UP = 0.0; // 0.0001
   static final double kD_SPIN_UP = 0.0002; // 0.0002
+
+  private final SlewRateLimiter shooterRamp = new SlewRateLimiter(0.05); // volts per second
+  double rampedSetpoint = 0.0;
 
   private final TalonFX shooterMotor = new TalonFX(1); // chjange ID
   private static final double GEAR_RATIO = 1.0; // 1:1
@@ -65,7 +71,7 @@ public class ShooterSubsystem extends SubsystemBase {
   private final double overspinFactor = 1.0;
   private final double rpmRapidFireTolerance = 200;
   private final double rpmAccurateTolerance = 50;
-  boolean shotsFired = false; //if shot recently fired then get the bang bang out
+  boolean shotsFired = false; // if shot recently fired then get the bang bang out
   private double lastTargetRPS = 0.0;
   private final VoltageOut voltageRequest = new VoltageOut(0);
   private double lastShotTime = 0.0;
@@ -80,10 +86,15 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public ShooterSubsystem() {
     var config = new TalonFXConfiguration();
-    config.MotorOutput.NeutralMode = NeutralModeValue.Coast; //if its breaking the it might fight the bangbang controller and fry stuff
+    config.MotorOutput.NeutralMode =
+        NeutralModeValue
+            .Coast; // if its breaking the it might fight the bangbang controller and fry stuff
     config.CurrentLimits.SupplyCurrentLimit = 40.0;
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     shooterMotor.getConfigurator().apply(config);
+
+    shooterRamp.reset(0.0);
 
     SmartDashboard.putNumber("Shooter/kP", kP);
     SmartDashboard.putNumber("Shooter/kD", kD);
@@ -104,11 +115,17 @@ public class ShooterSubsystem extends SubsystemBase {
     double targetRPS = targetRPM / 60.0;
     double currentRPS = currentRPM / 60.0;
 
+    rampedSetpoint = shooterRamp.calculate(setShooterRPM(targetRPS, currentRPS, spinUpPID));
+    //    if (firstTime) {
+    //      rampedSetpoint = 2.0;
+    //      firstTime = false;
+    //    }
+
     double rpmDrop = lastRPM - currentRPM;
     //    shotRecentlyFired = rpmDrop > 150; // tune
     double rpmSlope = (currentRPM - lastRPM) / 0.02;
 
-    if (rpmSlope < -7500) {
+    if (rpmSlope < -9500) {
       shotsFired = true;
       lastShotTime = currentTime.getAsDouble();
     }
@@ -122,7 +139,11 @@ public class ShooterSubsystem extends SubsystemBase {
     switch (state) {
       case SPIN_UP:
         double voltage = setShooterRPM(targetRPS, currentRPS, spinUpPID);
-        shooterMotor.setControl(voltageRequest.withOutput(voltage));
+        if (shotsFired) {
+          shooterMotor.setControl(voltageRequest.withOutput(voltage));
+        } else {
+          shooterMotor.setControl(voltageRequest.withOutput(rampedSetpoint));
+        }
         break;
       case RAPID_FIRE:
         if (Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance) {
@@ -143,7 +164,7 @@ public class ShooterSubsystem extends SubsystemBase {
         shooterMotor.setControl(voltageRequest.withOutput(0.0));
         break;
     }
-    System.out.println(currentRPM + " " + shotsFired);
+    //    System.out.println(currentRPM + " " + shotsFired);
     //    System.out.println(
     //        "Shooter State: "
     //            + state
@@ -167,17 +188,17 @@ public class ShooterSubsystem extends SubsystemBase {
   public double setShooterRPM(double targetRPS, double currentRPS, PIDController PID) {
     //    double accelleration = (targetRPS - lastTargetRPS) / 0.02;
     double output = 0.0;
-    if (shotsFired && currentRPS < targetRPS - 50.0 / 60.0) {
-//      PID.setP(kP_BOOST);
-//      PID.setD(kD_BOOST);
-      double bangBangVolts = bangBangController.calculate(currentRPS, targetRPS) * 12.0;
+    if (shotsFired && currentRPS < targetRPS - (50.0 / 60.0)) {
+      //      PID.setP(kP_BOOST);
+      //      PID.setD(kD_BOOST);
+      double bangBangVolts = bangBangController.calculate(currentRPS, targetRPS) * 4.0;
       double ffVolts = feedforward.calculate(targetRPS);
       // maybe add deadband here for osolation?
       output = ffVolts + bangBangVolts;
-      System.out.println("BOOST");
+      System.out.println("BOOST \n BOOST \n BOOST \n BOOST \n BOOST \n BOOST \n BOOST \n BOOST ");
     } else {
-      PID.setP(kP_SPIN_UP);
-      PID.setD(kD_SPIN_UP);
+      //      PID.setP(kP_SPIN_UP);
+      //      PID.setD(kD_SPIN_UP);
       double ffVolts = feedforward.calculate(targetRPS);
       // maybe add deadband here for osolation?
       double pidVolts = PID.calculate(currentRPS, targetRPS);
@@ -200,5 +221,20 @@ public class ShooterSubsystem extends SubsystemBase {
 
   private boolean isAtSpeed(double targetRPS, double currentRPS, double toleranceRM) {
     return (Math.abs(currentRPS * 60.0 - targetRPS * 60.0) <= toleranceRM);
+  }
+
+  public void onEnable() {
+    double currentRPS = getVelocityRevPerSec();
+    shooterRamp.reset(shooterMotor.getMotorVoltage().getValueAsDouble());
+
+    spinUpPID.reset();
+    velocityPID.reset();
+
+    //    bangBangController
+
+    lastRPM = getVelocityRevPerSec() * 60.0;
+    lastTargetRPS = 0.0;
+
+    shotsFired = false;
   }
 }

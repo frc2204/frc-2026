@@ -210,7 +210,7 @@ public class RobotContainer {
                     drive)
                 .ignoringDisable(true));
 
-    ps5Controller
+    controller
         .circle()
         .onTrue(
             Commands.runOnce(
@@ -226,7 +226,7 @@ public class RobotContainer {
             Commands.runOnce(
                 () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE_ACCURATE),
                 shooter));
-    ps5Controller
+    controller
         .triangle()
         .onTrue(
             Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));

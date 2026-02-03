@@ -257,15 +257,15 @@ public class turrettestingSubsystem extends SubsystemBase {
     double positionError = setpoint.position - Math.toRadians(currentAngleDeg);
 
     double accelleration = (setpoint.velocity - lastSetpoint.velocity) / dt;
-    System.out.println(
-        "position error: "
-            + Math.toDegrees(positionError)
-            + " velocity error: "
-            + Math.toDegrees(velocityError)
-            + " setpoint vel: "
-            + Math.toDegrees(setpoint.velocity)
-            + " acceleration: "
-            + Math.toDegrees(accelleration));
+    //    System.out.println(
+    //        "position error: "
+    //            + Math.toDegrees(positionError)
+    //            + " velocity error: "
+    //            + Math.toDegrees(velocityError)
+    //            + " setpoint vel: "
+    //            + Math.toDegrees(setpoint.velocity)
+    //            + " acceleration: "
+    //            + Math.toDegrees(accelleration));
     double output =
         kP * positionError + kD * velocityError + kV * setpoint.velocity + kA * accelleration;
     output = MathUtil.clamp(output, -12.0, 12.0);
