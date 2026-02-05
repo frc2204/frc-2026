@@ -18,9 +18,8 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.function.Supplier;
-// TODO: start making it target a pose not limelight, make limelight update the pose, but reject bad
-// data thats too far away, start making shooting on the move
-// TODO: merge this with advantagekit talonfx swerve code
+// TODO: make limelight update the pose, but reject bad data thats too far away, start making
+// shooting on the move
 
 public class turrettestingSubsystem extends SubsystemBase {
 
@@ -44,18 +43,19 @@ public class turrettestingSubsystem extends SubsystemBase {
 
   private static final Translation2d robotToTurret = new Translation2d(0.35, 0.10);
 
-  private final TalonFX turretMotor = new TalonFX(3);
+  private final TalonFX turretMotor = new TalonFX(20);
   private final VoltageOut voltageRequest = new VoltageOut(0);
 
   private static final double MAX_ANGLE = 720;
   private static final double MIN_ANGLE = -720;
-  private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 60;
-  private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 120;
+  private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
+  private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
   private static final double UNWIND_THRESHOLD = 500;
   private static final Rotation2d UNWIND_TARGET = Rotation2d.fromDegrees(0.0);
   private static final double GEAR_RATIO = 60.8; // 1:1
 
-  private final double kP = 2.0; // 2
+  private final double kS = 0.2; // static friction
+  private final double kP = 12.0; // 2
   private final double kI = 0.1;
   private final double kD = 0.1; // 0.1
   private final double kV = 0.12; // 0.12
@@ -99,7 +99,7 @@ public class turrettestingSubsystem extends SubsystemBase {
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     config.CurrentLimits.SupplyCurrentLimit = 40.0;
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     turretMotor.getConfigurator().apply(config);
     turretMotor.setPosition(0);
   }
@@ -125,7 +125,15 @@ public class turrettestingSubsystem extends SubsystemBase {
 
     if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
       isUnwinding = true;
-      targetAngle = UNWIND_TARGET;
+      //      targetAngle = UNWIND_TARGET;
+      targetAngle =
+          Rotation2d.fromRadians(
+              MathUtil.angleModulus(
+                  calculateTurretgoalRad(
+                      robotPose,
+                      robotFieldVelocity,
+                      chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
+
       //      System.out.println("unwinding");
     } else if (isUnwinding && atGoal(currentPositionDeg)) {
       // Finished unwinding
@@ -149,7 +157,14 @@ public class turrettestingSubsystem extends SubsystemBase {
     }
     if (isUnwinding) {
       System.out.println("is unwinding");
-      targetAngle = UNWIND_TARGET;
+      //      targetAngle = UNWIND_TARGET;
+      targetAngle =
+          Rotation2d.fromRadians(
+              MathUtil.angleModulus(
+                  calculateTurretgoalRad(
+                      robotPose,
+                      robotFieldVelocity,
+                      chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
     }
 
     //    System.out.println(targetAngle + "" + atGoal(currentPositionDeg));
@@ -267,7 +282,7 @@ public class turrettestingSubsystem extends SubsystemBase {
     //            + " acceleration: "
     //            + Math.toDegrees(accelleration));
     double output =
-        kP * positionError + kD * velocityError + kV * setpoint.velocity + kA * accelleration;
+        kP * positionError + kD * velocityError + kV * setpoint.velocity + kA * accelleration + kS;
     output = MathUtil.clamp(output, -12.0, 12.0);
 
     lastSetpoint = setpoint;
@@ -318,7 +333,7 @@ public class turrettestingSubsystem extends SubsystemBase {
     } else {
       totalTime = ballFlightTimeMap.get(getDistanceFromHub(robotPose));
     }
-    return turretAngleRad + robotOmegaRadPerSec * totalTime;
+    return turretAngleRad - robotOmegaRadPerSec * totalTime;
   }
 
   public double applyTranslationalLead(
@@ -377,8 +392,9 @@ public class turrettestingSubsystem extends SubsystemBase {
   public boolean atGoal(double currentPositionDeg) {
     double positionError = Math.abs(targetAngle.getDegrees() - currentPositionDeg);
     double velocityError = Math.abs(getVelocityDegPerSec());
+    System.out.println(positionError);
     //    System.out.println(positionError + "   egrnkjnkjrekjgnkj   " + velocityError);
-    if (positionError < 3.0 && velocityError < 3.0) {
+    if (positionError < 8.0 && velocityError < 3.0) {
       lastTimeAtGoal = Timer.getFPGATimestamp();
       wrappingAround = false;
       return true;
