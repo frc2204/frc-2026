@@ -37,8 +37,8 @@ public class ShooterSubsystem extends SubsystemBase {
 
   static final double kS = 0.16; // static friction (volts)
   static final double kV =
-      0.116363636; // volts per RPS //0.10475 to tune use dutycycleout run it to 70 rps and kV =
-  // voltage /
+      0.104; // volts per RPS //0.10475 to tune use dutycycleout run it to 70 rps and kV =
+  // voltage / // 0.116363636
   // 70 RPS
   static final double kA = 0.001; // volts per RPS^2
 
@@ -51,9 +51,9 @@ public class ShooterSubsystem extends SubsystemBase {
 
   static final double kP_SPIN_UP = 0.01; // 0.01
   static final double kI_SPIN_UP = 0.0; // 0.0001
-  static final double kD_SPIN_UP = 0.0002; // 0.0002
+  static final double kD_SPIN_UP = 0.0; // 0.0002
 
-  private final SlewRateLimiter shooterRamp = new SlewRateLimiter(0.05); // volts per second
+  private final SlewRateLimiter shooterRamp = new SlewRateLimiter(6); // volts per second
   double rampedSetpoint = 0.0;
 
   private final TalonFX shooterMotor = new TalonFX(1); // chjange ID
@@ -115,7 +115,7 @@ public class ShooterSubsystem extends SubsystemBase {
     double targetRPS = targetRPM / 60.0;
     double currentRPS = currentRPM / 60.0;
 
-    rampedSetpoint = shooterRamp.calculate(setShooterRPM(targetRPS, currentRPS, spinUpPID));
+    //    rampedSetpoint = shooterRamp.calculate(setShooterRPM(targetRPS, currentRPS, spinUpPID));
     //    if (firstTime) {
     //      rampedSetpoint = 2.0;
     //      firstTime = false;
@@ -139,11 +139,7 @@ public class ShooterSubsystem extends SubsystemBase {
     switch (state) {
       case SPIN_UP:
         double voltage = setShooterRPM(targetRPS, currentRPS, spinUpPID);
-        if (shotsFired) {
-          shooterMotor.setControl(voltageRequest.withOutput(voltage));
-        } else {
-          shooterMotor.setControl(voltageRequest.withOutput(rampedSetpoint));
-        }
+        shooterMotor.setControl(voltageRequest.withOutput(voltage));
         break;
       case RAPID_FIRE:
         if (Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance) {
@@ -207,11 +203,13 @@ public class ShooterSubsystem extends SubsystemBase {
 
     lastTargetRPS = targetRPS;
     output = MathUtil.clamp(output, -12.0, 12.0);
+    output = shooterRamp.calculate(output);
     return output;
   }
 
   public void setState(ShooterState newState) {
     state = newState;
+    shooterRamp.reset(0.0);
   }
 
   private double getTargetDistance() {
