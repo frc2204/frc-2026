@@ -17,7 +17,12 @@ import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.util.geometry.AllianceFlipUtil;
+import frc.robot.util.FieldConstants;
+
 import java.util.function.Supplier;
+
+import static frc.robot.util.FieldConstants.HUBPOSE;
 // TODO: make limelight update the pose, but reject bad data thats too far away, start making
 // shooting on the move
 
@@ -32,8 +37,9 @@ public class turrettestingSubsystem extends SubsystemBase {
   private static double VISION_LATENCY;
 
   private final NetworkTable limelightTable;
-  private final Translation2d HUB_POSE =
-      new Translation2d(Units.inchesToMeters(182.11), Units.inchesToMeters(158.84));
+  private final Translation2d HUB_POSE = AllianceFlipUtil.apply(
+      new Translation2d(HUBPOSE.getX(), HUBPOSE.getY())
+  );
   private static final double VISION_KP = 0.015;
   Pose2d robotPose;
   private final Supplier<Pose2d> poseSupplier;
@@ -66,6 +72,7 @@ public class turrettestingSubsystem extends SubsystemBase {
 
   private Rotation2d targetAngle;
   private boolean isUnwinding;
+  public double lastUnwindTime = 0.0;
 
   private boolean wrappingAround;
 
@@ -85,6 +92,13 @@ public class turrettestingSubsystem extends SubsystemBase {
     this.poseSupplier = poseSupplier;
     this.chassisSpeedsSupplier = chassisSpeedsSupplier;
     limelightTable = NetworkTableInstance.getDefault().getTable("limelight-three");
+    if (AllianceFlipUtil.shouldFlip()) {
+      limelightTable.getEntry("priorityid").setNumber(25); // focus on blue hub tag
+    } else {
+      limelightTable.getEntry("priorityid").setNumber(10); // focus on red hub tag
+      System.out.print(limelightTable.getEntry("priorityid").setNumber(10)); //see if it prints out false to debug
+    }
+
     this.profile =
         new TrapezoidProfile(
             new TrapezoidProfile.Constraints(
@@ -124,6 +138,7 @@ public class turrettestingSubsystem extends SubsystemBase {
     double voltage = 0.0;
 
     if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
+
       isUnwinding = true;
       //      targetAngle = UNWIND_TARGET;
       targetAngle =
@@ -133,7 +148,7 @@ public class turrettestingSubsystem extends SubsystemBase {
                       robotPose,
                       robotFieldVelocity,
                       chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
-
+      lastUnwindTime = Timer.getFPGATimestamp();
       //      System.out.println("unwinding");
     } else if (isUnwinding && atGoal(currentPositionDeg)) {
       // Finished unwinding
@@ -323,13 +338,13 @@ public class turrettestingSubsystem extends SubsystemBase {
   public double applyAngularLead(
       double turretAngleRad, double robotOmegaRadPerSec, Pose2d robotPose) {
     double totalTime;
-    if (isVisionTrustworthy(
+    if (isVisionTrustworthy(  //if priorityid works dont need this
         limelightTable.getEntry("tx").getDouble(0.0),
         Math.toRadians(getVelocityDegPerSec()),
         robotOmegaRadPerSec,
-        getDistanceFromHub(robotPose))) {
-      //      totalTime = VISION_LATENCY + ballFlightTimeMap.get(getDistanceFromHub(robotPose));
-      totalTime = ballFlightTimeMap.get(getDistanceFromHub(robotPose));
+        getDistanceFromHub(robotPose),
+        limelightTable.getEntry("tid").getDouble(0))) {
+      totalTime = VISION_LATENCY + ballFlightTimeMap.get(getDistanceFromHub(robotPose));
     } else {
       totalTime = ballFlightTimeMap.get(getDistanceFromHub(robotPose));
     }
@@ -373,11 +388,14 @@ public class turrettestingSubsystem extends SubsystemBase {
   }
 
   public static boolean isVisionTrustworthy(
-      double tx, double turretOmega, double robotOmega, double distance) {
-    return Math.abs(tx) < 5.0
-        && Math.abs(turretOmega) < Math.toRadians(120)
-        && Math.abs(robotOmega) < Math.toRadians(180)
-        && distance < 6.0;
+      double tx, double turretOmega, double robotOmega, double distance, double tid) {
+    if (tid == 10 || tid == 25) {
+      return Math.abs(tx) < 5.0
+              && Math.abs(turretOmega) < Math.toRadians(120)
+              && Math.abs(robotOmega) < Math.toRadians(180)
+              && distance < 6.0;
+    }
+    return false; //not hub tag
   }
 
   public double getDistanceFromHub(Pose2d robotPose) {
@@ -394,6 +412,10 @@ public class turrettestingSubsystem extends SubsystemBase {
     double velocityError = Math.abs(getVelocityDegPerSec());
     System.out.println(positionError);
     //    System.out.println(positionError + "   egrnkjnkjrekjgnkj   " + velocityError);
+    if (Timer.getFPGATimestamp()-lastUnwindTime> 2.0) {
+      return true; // if we've been unwinding for a while, just say we're at the goal to prevent getting stuck
+    }
+
     if (positionError < 8.0 && velocityError < 3.0) {
       lastTimeAtGoal = Timer.getFPGATimestamp();
       wrappingAround = false;
@@ -422,7 +444,8 @@ public class turrettestingSubsystem extends SubsystemBase {
         limelightTable.getEntry("tx").getDouble(0.0),
         Math.toRadians(getVelocityDegPerSec()),
         robotOmega,
-        getDistanceFromHub(robotPose))) {
+        getDistanceFromHub(robotPose),
+        limelightTable.getEntry("tid").getDouble(0))) {
       angle =
           applyVisionCorrection(
               angle,
