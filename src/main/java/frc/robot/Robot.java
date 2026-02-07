@@ -92,7 +92,9 @@ public class Robot extends LoggedRobot {
 
   /** This function is called once when the robot is disabled. */
   @Override
-  public void disabledInit() {}
+  public void disabledInit() {
+    LimelightHelpers.SetIMUMode("limelight-four", 1);
+  }
 
   /** This function is called periodically when disabled. */
   @Override
@@ -101,6 +103,7 @@ public class Robot extends LoggedRobot {
   /** This autonomous runs the autonomous command selected by your {@link RobotContainer} class. */
   @Override
   public void autonomousInit() {
+    LimelightHelpers.SetIMUMode("limelight-four", 4);
     autonomousCommand = robotContainer.getAutonomousCommand();
 
     // schedule the autonomous command (example)
@@ -120,6 +123,8 @@ public class Robot extends LoggedRobot {
     // teleop starts running. If you want the autonomous to
     // continue until interrupted by another command, remove
     // this line or comment it out.
+    LimelightHelpers.SetIMUMode("limelight-four", 4);
+
     ShooterSubsystem.getInstance().onEnable();
     if (autonomousCommand != null) {
       autonomousCommand.cancel();
