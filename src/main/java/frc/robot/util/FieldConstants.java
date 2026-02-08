@@ -31,9 +31,9 @@ public class FieldConstants {
     public static double BUMPWIDTH = 1.8542;
     public static double WALLWIDTH = 0.3048; //width of the wall thing between the trench and the bump
 
-    public static Pose2d TOPLEFTBUMP = new Pose2d(ALLIANCEWALLTOHUB, FIELDWIDTH-TRENCHWIDTH-WALLWIDTH, new Rotation2d());
+    public static Pose2d TOPLEFTBUMP = new Pose2d(ALLIANCEWALLTOHUB, FIELDWIDTH-TRENCHWIDTH-WALLWIDTH, new Rotation2d()); //shoot at this to get fuel to our side
     public static Pose2d TOPRIGHTBUMP = new Pose2d(ALLIANCEWALLTOHUB, FIELDWIDTH-TRENCHWIDTH-WALLWIDTH-BUMPWIDTH, new Rotation2d());
 
-    public static Pose2d BOTTOMLEFTBUMP = new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH+WALLWIDTH+BUMPWIDTH, new Rotation2d());
+    public static Pose2d BOTTOMLEFTBUMP = new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH+WALLWIDTH+BUMPWIDTH, new Rotation2d()); //or this one if we're closer
     public static Pose2d BOTTOMRIGHTBUMP = new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH+WALLWIDTH, new Rotation2d());
 }
