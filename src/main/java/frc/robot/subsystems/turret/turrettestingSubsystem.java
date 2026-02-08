@@ -37,9 +37,10 @@ public class turrettestingSubsystem extends SubsystemBase {
   private static double VISION_LATENCY;
 
   private final NetworkTable limelightTable;
-  private final Translation2d HUB_POSE = AllianceFlipUtil.apply(
-      new Translation2d(HUBPOSE.getX(), HUBPOSE.getY())
-  );
+  private final Translation2d HUB_POSE = AllianceFlipUtil.apply(FieldConstants.HUBPOSE.getTranslation());
+  private final Translation2d TOPLEFTSIDETRENCH = AllianceFlipUtil.apply(FieldConstants.TOPLEFTSIDETRENCH.getTranslation());
+  private final Translation2d BOTTOMRIGHTSIDETRENCH = AllianceFlipUtil.apply(FieldConstants.BOTTOMRIGHTSIDETRENCH.getTranslation());
+  private Translation2d TARGET_POSE = HUB_POSE;
   private static final double VISION_KP = 0.015;
   Pose2d robotPose;
   private final Supplier<Pose2d> poseSupplier;
@@ -137,6 +138,7 @@ public class turrettestingSubsystem extends SubsystemBase {
 
     double voltage = 0.0;
 
+    setTARGET_POSE();
     if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
 
       isUnwinding = true;
@@ -150,13 +152,13 @@ public class turrettestingSubsystem extends SubsystemBase {
                       chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
       lastUnwindTime = Timer.getFPGATimestamp();
       //      System.out.println("unwinding");
-    } else if (isUnwinding && atGoal(currentPositionDeg)) {
+    } else if (isUnwinding && atGoal()) {
       // Finished unwinding
       //      System.out.println(
       //
       // "DONEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE");
       isUnwinding = false;
-    } else if (wrappingAround && atGoal(currentPositionDeg)) {
+    } else if (wrappingAround && atGoal()) {
       wrappingAround = false;
     }
     if (!isUnwinding && !wrappingAround) {
@@ -202,9 +204,9 @@ public class turrettestingSubsystem extends SubsystemBase {
     Translation2d turretPose =
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
 
-    Translation2d toHub = HUB_POSE.minus(turretPose);
+    Translation2d toTargetPose = TARGET_POSE.minus(turretPose);
     // field relative angle
-    double fieldAngle = Math.atan2(toHub.getY(), toHub.getX());
+    double fieldAngle = Math.atan2(toTargetPose.getY(), toTargetPose.getX());
 
     double desiredTurretAngle =
         MathUtil.angleModulus(fieldAngle - robotPose.getRotation().getRadians());
@@ -407,8 +409,8 @@ public class turrettestingSubsystem extends SubsystemBase {
     return toHub.getNorm();
   }
 
-  public boolean atGoal(double currentPositionDeg) {
-    double positionError = Math.abs(targetAngle.getDegrees() - currentPositionDeg);
+  public boolean atGoal() {
+    double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
     double velocityError = Math.abs(getVelocityDegPerSec());
     System.out.println(positionError);
     //    System.out.println(positionError + "   egrnkjnkjrekjgnkj   " + velocityError);
@@ -437,7 +439,7 @@ public class turrettestingSubsystem extends SubsystemBase {
             robotVelocity,
             robotOmega,
             robotPose.getRotation(),
-            HUB_POSE.minus(
+            TARGET_POSE.minus(
                 robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()))));
 
     if (isVisionTrustworthy(
@@ -455,5 +457,32 @@ public class turrettestingSubsystem extends SubsystemBase {
 
     angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
     return angle;
+  }
+  public void setTARGET_POSE(){
+      if (AllianceFlipUtil.shouldFlip()) { //on red alliance
+
+          if (robotPose.getX() < FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB) { //if its in mid target the side walls to put balls over to our side
+              if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
+                  TARGET_POSE = TOPLEFTSIDETRENCH; //top half of field, target top right bump to get fuel to our side
+              } else { //maybe do something here to tell feeder we changing, so we dont fire when we arent at goal, or use atGoal()
+                  TARGET_POSE = BOTTOMRIGHTSIDETRENCH; //bottom half of field, target bottom left bump to get fuel to our side
+              }
+          } else {
+              TARGET_POSE = HUB_POSE; //if not target our hub
+          }
+
+      } else { //blue alliance
+
+          if (robotPose.getX() > FieldConstants.ALLIANCEWALLTOHUB) { //if its in mid target the side walls to put balls over to our side
+            if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
+              TARGET_POSE = TOPLEFTSIDETRENCH; //top half of field, target top right bump to get fuel to our side
+            } else { //maybe do something here to tell feeder we changing, so we dont fire when we arent at goal, or use atGoal()
+              TARGET_POSE = BOTTOMRIGHTSIDETRENCH; //bottom half of field, target bottom left bump to get fuel to our side
+            }
+          } else {
+            TARGET_POSE = HUB_POSE; //if not target our hub
+          }
+
+      }
   }
 }
