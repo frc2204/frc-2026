@@ -378,21 +378,21 @@ public class turrettestingSubsystem extends SubsystemBase {
     return turretAngleRad + lead;
   }
 
-  public static double applyVisionCorrection(
+  public double applyVisionCorrection(
       double turretAngleRad, double txDeg, double turretAngularVelocity) {
     // if moving fast, ignore correction
-    //    if (Math.abs(turretAngularVelocity) > Math.toRadians(120)) {
-    //      return turretAngleRad;
-    //    }
+        if (Math.abs(turretAngularVelocity) > Math.toRadians(120)) {
+          return turretAngleRad;
+        }
     // vision nudgey
     return turretAngleRad
-        + MathUtil.clamp(VISION_KP * Math.toRadians(txDeg), -Math.toRadians(5), Math.toRadians(5));
+        + MathUtil.clamp(VISION_KP * (Math.toRadians(txDeg)-getAngleFromHub(robotPose).getRadians()), -Math.toRadians(5), Math.toRadians(5));
   }
 
-  public static boolean isVisionTrustworthy(
+  public boolean isVisionTrustworthy(
       double tx, double turretOmega, double robotOmega, double distance, double tid) {
     if (tid == 10 || tid == 25) {
-      return Math.abs(tx) < 5.0
+      return Math.abs(tx-getAngleFromHub(robotPose).getDegrees()) < 5.0
               && Math.abs(turretOmega) < Math.toRadians(120)
               && Math.abs(robotOmega) < Math.toRadians(180)
               && distance < 6.0;
@@ -407,6 +407,15 @@ public class turrettestingSubsystem extends SubsystemBase {
     Translation2d toHub = HUB_POSE.minus(turretPose);
 
     return toHub.getNorm();
+  }
+
+  public Rotation2d getAngleFromHub(Pose2d robotPose) {
+    Translation2d turretPose =
+            robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
+
+    Translation2d toHub = HUB_POSE.minus(turretPose);
+
+    return toHub.getAngle();
   }
 
   public boolean atGoal() {
