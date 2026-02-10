@@ -59,7 +59,7 @@ public class RobotContainer {
         // a CANcoder
         drive =
             new Drive(
-                new GyroIONavX(),
+                new GyroIOPigeon2(),
                 new ModuleIOTalonFX(TunerConstants.FrontLeft),
                 new ModuleIOTalonFX(TunerConstants.FrontRight),
                 new ModuleIOTalonFX(TunerConstants.BackLeft),
