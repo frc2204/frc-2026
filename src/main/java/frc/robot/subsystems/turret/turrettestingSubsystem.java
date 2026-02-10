@@ -427,7 +427,7 @@ public class turrettestingSubsystem extends SubsystemBase {
       return true; // if we've been unwinding for a while, just say we're at the goal to prevent getting stuck
     }
 
-    if (positionError < 8.0 && velocityError < 3.0) {
+    if (positionError < 8.0) {
       lastTimeAtGoal = Timer.getFPGATimestamp();
       wrappingAround = false;
       return true;
