@@ -12,7 +12,6 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
@@ -21,8 +20,6 @@ import frc.robot.util.geometry.AllianceFlipUtil;
 import frc.robot.util.FieldConstants;
 
 import java.util.function.Supplier;
-
-import static frc.robot.util.FieldConstants.HUBPOSE;
 // TODO: make limelight update the pose, but reject bad data thats too far away, start making
 // shooting on the move
 
@@ -38,8 +35,8 @@ public class turrettestingSubsystem extends SubsystemBase {
 
   private final NetworkTable limelightTable;
   private final Translation2d HUB_POSE = AllianceFlipUtil.apply(FieldConstants.HUBPOSE.getTranslation());
-  private final Translation2d TOPLEFTSIDETRENCH = AllianceFlipUtil.apply(FieldConstants.TOPLEFTSIDETRENCH.getTranslation());
-  private final Translation2d BOTTOMRIGHTSIDETRENCH = AllianceFlipUtil.apply(FieldConstants.BOTTOMRIGHTSIDETRENCH.getTranslation());
+  private final Translation2d TOPLEFTBUMP = AllianceFlipUtil.apply(FieldConstants.TOPLEFTBUMP.getTranslation());
+  private final Translation2d BOTTOMRIGHTBUMP = AllianceFlipUtil.apply(FieldConstants.BOTTOMRIGHTBUMP.getTranslation());
   private Translation2d TARGET_POSE = HUB_POSE;
   private static final double VISION_KP = 0.015;
   Pose2d robotPose;
@@ -472,9 +469,9 @@ public class turrettestingSubsystem extends SubsystemBase {
 
           if (robotPose.getX() < FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB) { //if its in mid target the side walls to put balls over to our side
               if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
-                  TARGET_POSE = TOPLEFTSIDETRENCH; //top half of field, target top right bump to get fuel to our side
+                  TARGET_POSE = TOPLEFTBUMP; //top half of field, target top right bump to get fuel to our side
               } else { //maybe do something here to tell feeder we changing, so we dont fire when we arent at goal, or use atGoal()
-                  TARGET_POSE = BOTTOMRIGHTSIDETRENCH; //bottom half of field, target bottom left bump to get fuel to our side
+                  TARGET_POSE = BOTTOMRIGHTBUMP; //bottom half of field, target bottom left bump to get fuel to our side
               }
           } else {
               TARGET_POSE = HUB_POSE; //if not target our hub
@@ -484,9 +481,9 @@ public class turrettestingSubsystem extends SubsystemBase {
 
           if (robotPose.getX() > FieldConstants.ALLIANCEWALLTOHUB) { //if its in mid target the side walls to put balls over to our side
             if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
-              TARGET_POSE = TOPLEFTSIDETRENCH; //top half of field, target top right bump to get fuel to our side
+              TARGET_POSE = TOPLEFTBUMP; //top half of field, target top right bump to get fuel to our side
             } else { //maybe do something here to tell feeder we changing, so we dont fire when we arent at goal, or use atGoal()
-              TARGET_POSE = BOTTOMRIGHTSIDETRENCH; //bottom half of field, target bottom left bump to get fuel to our side
+              TARGET_POSE = BOTTOMRIGHTBUMP; //bottom half of field, target bottom left bump to get fuel to our side
             }
           } else {
             TARGET_POSE = HUB_POSE; //if not target our hub
