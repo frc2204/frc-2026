@@ -12,6 +12,7 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
@@ -20,6 +21,8 @@ import frc.robot.util.geometry.AllianceFlipUtil;
 import frc.robot.util.FieldConstants;
 
 import java.util.function.Supplier;
+
+import static frc.robot.util.FieldConstants.HUBPOSE;
 // TODO: make limelight update the pose, but reject bad data thats too far away, start making
 // shooting on the move
 
@@ -118,6 +121,15 @@ public class turrettestingSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    LimelightHelpers.setCameraPose_RobotSpace(
+        "limelight",
+        0.0127, // x meters forward
+        -0.1143, // y meters left
+        0, // z meters up
+        0, // roll deg
+        0, // pitch deg
+        getAbsolutePositionDeg() + 90 // yaw
+        ); // yaw deg
     // This method will be called once per scheduler run
     VISION_LATENCY =
         (limelightTable.getEntry("tl").getDouble(0.0)
@@ -464,6 +476,7 @@ public class turrettestingSubsystem extends SubsystemBase {
     angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
     return angle;
   }
+
   public void setTARGET_POSE(){
       if (AllianceFlipUtil.shouldFlip()) { //on red alliance
 
