@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 
 // TODO: make limelight update the pose, but reject bad data thats too far away, start making
 // shooting on the move
+// TODO: limit speed, closer we are to target slower we go, farther we are the less limited and maybe remove bang bang and also add the phase shifting thing and shoot balls a lil earlier because takes a bit to go into hub and also to detect
 
 public class turrettestingSubsystem extends SubsystemBase {
 
