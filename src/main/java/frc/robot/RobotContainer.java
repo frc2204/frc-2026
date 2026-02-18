@@ -22,13 +22,13 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.DriveCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.*;
+import frc.robot.subsystems.objectdetection.ObjectDetection;
 import frc.robot.subsystems.turret.ShooterSubsystem;
 import frc.robot.subsystems.turret.turrettestingSubsystem;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionIO;
 import frc.robot.subsystems.vision.VisionIOLimelight;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
-import frc.robot.util.ObjectToPose;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 /**
@@ -41,9 +41,9 @@ public class RobotContainer {
   // Subsystems
   private final Drive drive;
   private final Vision vision;
-  private final ObjectToPose objectToPose = new ObjectToPose();
   public final ShooterSubsystem shooter = new ShooterSubsystem();
   private final turrettestingSubsystem turret;
+  private final ObjectDetection objectDetection;
 
   // Controller
   private final CommandPS5Controller controller = new CommandPS5Controller(0);
@@ -149,6 +149,9 @@ public class RobotContainer {
         turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
     }
+
+    // Set up object detection
+    objectDetection = new ObjectDetection(drive::getPose);
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
