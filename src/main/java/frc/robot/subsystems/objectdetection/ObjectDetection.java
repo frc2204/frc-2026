@@ -25,7 +25,7 @@ public class ObjectDetection extends SubsystemBase {
 
   // Camera config
   private static final String CAMERA_NAME = "limelight-detect";
-  private static final int FUEL_CLASS_ID = 0;
+  private static final int FUEL_CLASS_ID = 3; // "Fuels" class from Roboflow model
   private static final double CAMERA_HEIGHT_METERS = 0.5461;
   private static final double TARGET_HEIGHT_METERS = 0.05715; // ball center on ground
   private static final double CAMERA_PITCH_DEGREES = -35.0;
@@ -104,6 +104,10 @@ public class ObjectDetection extends SubsystemBase {
     Translation2d robotTranslation = robotPose.getTranslation();
     trackedFuels.removeIf(
         tf -> tf.fieldPosition.getDistance(robotTranslation) < PICKUP_RADIUS_METERS);
+
+    for (RawDetection det : rawDetections) {
+      System.out.println("Detection classId: " + det.classId + " ta: " + det.ta);
+    }
 
     // Log for AdvantageScope
     logDetections(frameDetections, rawDetections.length);
