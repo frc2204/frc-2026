@@ -1,4 +1,4 @@
-package frc.robot.subsystems.turret;
+package frc.robot.subsystems.shooting;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -23,7 +23,9 @@ import java.util.function.Supplier;
 
 // TODO: make limelight update the pose, but reject bad data thats too far away, start making
 // shooting on the move
-// TODO: limit speed, closer we are to target slower we go, farther we are the less limited and maybe remove bang bang and also add the phase shifting thing and shoot balls a lil earlier because takes a bit to go into hub and also to detect
+// TODO: limit speed, closer we are to target slower we go, farther we are the less limited and
+// maybe remove bang bang and also add the phase shifting thing and shoot balls a lil earlier
+// because takes a bit to go into hub and also to detect
 
 public class turrettestingSubsystem extends SubsystemBase {
 
@@ -38,10 +40,10 @@ public class turrettestingSubsystem extends SubsystemBase {
   private final NetworkTable limelightTable;
   private final Translation2d HUB_POSE =
       AllianceFlipUtil.apply(FieldConstants.HUBPOSE.getTranslation());
-  private final Translation2d TOPLEFTBUMP =
-      AllianceFlipUtil.apply(FieldConstants.TOPLEFTBUMP.getTranslation());
-  private final Translation2d BOTTOMRIGHTBUMP =
-      AllianceFlipUtil.apply(FieldConstants.BOTTOMRIGHTBUMP.getTranslation());
+  private final Translation2d TOPTARGET =
+      AllianceFlipUtil.apply(FieldConstants.TOPTARGET.getTranslation());
+  private final Translation2d BOTTOMTARGET =
+      AllianceFlipUtil.apply(FieldConstants.BOTTOMTARGET.getTranslation());
   private Translation2d TARGET_POSE = HUB_POSE;
   private static final double VISION_KP = 0.015;
   Pose2d robotPose;
@@ -485,7 +487,7 @@ public class turrettestingSubsystem extends SubsystemBase {
     angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
     return angle;
   }
-
+ //TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past mid
   public void setTARGET_POSE() {
     if (AllianceFlipUtil.shouldFlip()) { // on red alliance
 
@@ -496,11 +498,11 @@ public class turrettestingSubsystem extends SubsystemBase {
         // our side
         if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
           TARGET_POSE =
-              TOPLEFTBUMP; // top half of field, target top right bump to get fuel to our side
+                  TOPTARGET; // top half of field, target top right bump to get fuel to our side
         } else { // maybe do something here to tell feeder we changing, so we dont fire when we
           // arent at goal, or use atGoal()
           TARGET_POSE =
-              BOTTOMRIGHTBUMP; // bottom half of field, target bottom left bump to get fuel to our
+                  BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
           // side
         }
       } else {
@@ -515,11 +517,11 @@ public class turrettestingSubsystem extends SubsystemBase {
         // side
         if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
           TARGET_POSE =
-              TOPLEFTBUMP; // top half of field, target top right bump to get fuel to our side
+                  TOPTARGET; // top half of field, target top right bump to get fuel to our side
         } else { // maybe do something here to tell feeder we changing, so we dont fire when we
           // arent at goal, or use atGoal()
           TARGET_POSE =
-              BOTTOMRIGHTBUMP; // bottom half of field, target bottom left bump to get fuel to our
+                  BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
           // side
         }
       } else {

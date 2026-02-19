@@ -1,4 +1,4 @@
-package frc.robot.subsystems.turret; // package frc.robot.subsystems.turret;
+package frc.robot.subsystems.shooting; // package frc.robot.subsystems.turret;
 //
 // import com.ctre.phoenix6.controls.VoltageOut;
 // import com.ctre.phoenix6.hardware.TalonFX;
