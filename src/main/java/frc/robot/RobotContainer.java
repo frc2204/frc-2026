@@ -23,12 +23,13 @@ import frc.robot.commands.DriveCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.*;
 import frc.robot.subsystems.objectdetection.ObjectDetection;
-import frc.robot.subsystems.turret.ShooterSubsystem;
-import frc.robot.subsystems.turret.turrettestingSubsystem;
+import frc.robot.subsystems.shooting.ShooterSubsystem;
+import frc.robot.subsystems.shooting.turrettestingSubsystem;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionIO;
 import frc.robot.subsystems.vision.VisionIOLimelight;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
+import frc.robot.util.HubShiftUtil;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 /**
@@ -234,6 +235,25 @@ public class RobotContainer {
     controller
         .triangle()
         .onTrue(
+            Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+
+    //l2 to shoot if active, l2 and r2 to override
+    controller
+        .L2()
+        .whileTrue(
+            Commands.run(
+                () -> {
+                  boolean override = controller.R2().getAsBoolean();
+                  boolean shiftActive = HubShiftUtil.getShiftedShiftInfo().active();
+
+                  if (override || shiftActive) {
+                    shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
+                  } else {
+                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
+                  }
+                },
+                shooter))
+        .onFalse(
             Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
   }
 

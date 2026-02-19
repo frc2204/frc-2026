@@ -15,6 +15,9 @@ public class FieldConstants {
   public static final double FIELDLENGTH = 16.54099;
   public static final double FIELDWIDTH = 8.069326;
 
+  public static final Pose2d TOPTARGET = new Pose2d((FIELDWIDTH / 2.0) + (FIELDWIDTH * 0.25), 0, new Rotation2d()); // shoot at this to get fuel to our side
+  public static final Pose2d BOTTOMTARGET = new Pose2d((FIELDWIDTH / 2.0) - (FIELDWIDTH * 0.25), 0, new Rotation2d());  // or this one if we're closer
+
   public static final double ALLIANCEWALLTOHUB = 4.625594; // center of hub
   public static final Pose2d HUBPOSE =
       new Pose2d(ALLIANCEWALLTOHUB, FIELDWIDTH / 2.0, new Rotation2d()); // middle of hub
@@ -42,7 +45,7 @@ public class FieldConstants {
       new Pose2d(
           ALLIANCEWALLTOHUB,
           FIELDWIDTH - TRENCHWIDTH - WALLWIDTH,
-          new Rotation2d()); // shoot at this to get fuel to our side
+          new Rotation2d());
   public static Pose2d TOPRIGHTBUMP =
       new Pose2d(
           ALLIANCEWALLTOHUB, FIELDWIDTH - TRENCHWIDTH - WALLWIDTH - BUMPWIDTH, new Rotation2d());
@@ -51,7 +54,7 @@ public class FieldConstants {
       new Pose2d(
           ALLIANCEWALLTOHUB,
           TRENCHWIDTH + WALLWIDTH + BUMPWIDTH,
-          new Rotation2d()); // or this one if we're closer
+          new Rotation2d());
   public static Pose2d BOTTOMRIGHTBUMP =
       new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH + WALLWIDTH, new Rotation2d());
 }
