@@ -487,7 +487,8 @@ public class turrettestingSubsystem extends SubsystemBase {
     angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
     return angle;
   }
- //TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past mid
+  // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past
+  // mid
   public void setTARGET_POSE() {
     if (AllianceFlipUtil.shouldFlip()) { // on red alliance
 
@@ -498,11 +499,11 @@ public class turrettestingSubsystem extends SubsystemBase {
         // our side
         if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
           TARGET_POSE =
-                  TOPTARGET; // top half of field, target top right bump to get fuel to our side
+              TOPTARGET; // top half of field, target top right bump to get fuel to our side
         } else { // maybe do something here to tell feeder we changing, so we dont fire when we
           // arent at goal, or use atGoal()
           TARGET_POSE =
-                  BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
+              BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
           // side
         }
       } else {
@@ -517,11 +518,11 @@ public class turrettestingSubsystem extends SubsystemBase {
         // side
         if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
           TARGET_POSE =
-                  TOPTARGET; // top half of field, target top right bump to get fuel to our side
+              TOPTARGET; // top half of field, target top right bump to get fuel to our side
         } else { // maybe do something here to tell feeder we changing, so we dont fire when we
           // arent at goal, or use atGoal()
           TARGET_POSE =
-                  BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
+              BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
           // side
         }
       } else {

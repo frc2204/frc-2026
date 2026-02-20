@@ -1,9 +1,11 @@
 package frc.robot.subsystems.shooting;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.BangBangController;
@@ -57,6 +59,7 @@ public class ShooterSubsystem extends SubsystemBase {
   double rampedSetpoint = 0.0;
 
   private final TalonFX shooterMotor = new TalonFX(1); // chjange ID
+  private final TalonFX shooterMotor2 = new TalonFX(2); // change ID
   private static final double GEAR_RATIO = 1.0; // 1:1
 
   private double timeAtSpeed = 0.0;
@@ -93,6 +96,16 @@ public class ShooterSubsystem extends SubsystemBase {
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     shooterMotor.getConfigurator().apply(config);
+
+    var config2 = new TalonFXConfiguration();
+    config2.MotorOutput.NeutralMode =
+        NeutralModeValue
+            .Coast; // if its breaking the it might fight the bangbang controller and fry stuff
+    config2.CurrentLimits.SupplyCurrentLimit = 40.0;
+    config2.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config2.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    shooterMotor2.getConfigurator().apply(config2);
+    shooterMotor2.setControl(new Follower(shooterMotor.getDeviceID(), MotorAlignmentValue.Opposed));
 
     shooterRamp.reset(0.0);
 

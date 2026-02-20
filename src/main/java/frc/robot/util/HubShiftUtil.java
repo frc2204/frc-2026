@@ -3,7 +3,6 @@ package frc.robot.util;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.Timer;
-import frc.robot.subsystems.shooting.turrettestingSubsystem;
 
 public class HubShiftUtil {
   public enum ShiftEnum {
@@ -29,10 +28,10 @@ public class HubShiftUtil {
   private static final double minFuelCountDelay = 1.0;
   private static final double maxFuelCountDelay = 2.0;
   private static final double shiftEndFuelCountExtension = 3.0;
-  private static final double minTimeOfFlight =3 ;
+  private static final double minTimeOfFlight = 3;
   // how long does it take a ball when closest
   private static final double maxTimeOfFlight = 3;
-   // how long does it take a ball when farthest
+  // how long does it take a ball when farthest
   private static final double approachingActiveFudge = -1 * (minTimeOfFlight + minFuelCountDelay);
   private static final double endingActiveFudge =
       shiftEndFuelCountExtension + -1 * (maxTimeOfFlight + maxFuelCountDelay);
