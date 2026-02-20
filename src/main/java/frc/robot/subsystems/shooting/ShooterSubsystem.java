@@ -225,6 +225,24 @@ public class ShooterSubsystem extends SubsystemBase {
     shooterRamp.reset(0.0);
   }
 
+  public ShooterState getState() {
+    return state;
+  }
+
+  public boolean isAtGoalSpeed() {
+    double distance = getTargetDistance();
+    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    double currentRPM = getVelocityRevPerSec() * 60.0;
+    return Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance;
+  }
+
+  public boolean isAtGoalSpeedAccurate() {
+    double distance = getTargetDistance();
+    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    double currentRPM = getVelocityRevPerSec() * 60.0;
+    return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
+  }
+
   private double getTargetDistance() {
     // find distance somehow idk prob pose
     return 2.0;
