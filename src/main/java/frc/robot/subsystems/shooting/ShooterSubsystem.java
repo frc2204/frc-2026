@@ -2,19 +2,15 @@ package frc.robot.subsystems.shooting;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
+import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
-import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.controller.BangBangController;
-import edu.wpi.first.math.controller.PIDController;
-import edu.wpi.first.math.controller.SimpleMotorFeedforward;
 import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.function.DoubleSupplier;
 
@@ -37,89 +33,96 @@ public class ShooterSubsystem extends SubsystemBase {
 
   private final DoubleSupplier currentTime = Timer::getFPGATimestamp;
 
-  static final double kS = 0.16; // static friction (volts)
-  static final double kV =
-      0.104; // volts per RPS //0.10475 to tune use dutycycleout run it to 70 rps and kV =
-  // voltage / // 0.116363636
-  // 70 RPS
-  static final double kA = 0.001; // volts per RPS^2
+  // Slot 0: steady-state (holding speed)
+  static final double kS = 0.16;
+  static final double kV = 0.104;
+  static final double kA = 0.001;
+  static final double kP_STEADY = 0.1; // tune
+  static final double kD_STEADY = 0.0;
 
-  static final double kP = 1.0;
-  static final double kI = 0.0;
-  static final double kD = 0.0;
+  // Slot 1: recovery (getting back to speed after shot)
+  static final double kP_RECOVERY = 0.8; // tune — aggressive
+  static final double kD_RECOVERY = 0.01; // tune — dampen overshoot
 
-  double kP_BOOST = 2.0; // ~2x normal
-  double kD_BOOST = 0.002;
+  // RPM error threshold to switch slots
+  static final double RECOVERY_THRESHOLD_RPS = 200.0 / 60.0;
 
-  static final double kP_SPIN_UP = 0.01; // 0.01
-  static final double kI_SPIN_UP = 0.0; // 0.0001
-  static final double kD_SPIN_UP = 0.0; // 0.0002
-
-  private final SlewRateLimiter shooterRamp = new SlewRateLimiter(6); // volts per second
-  double rampedSetpoint = 0.0;
-
-  private final TalonFX shooterMotor = new TalonFX(1); // chjange ID
+  private final TalonFX shooterMotor = new TalonFX(1); // change ID
   private final TalonFX shooterMotor2 = new TalonFX(2); // change ID
-  private static final double GEAR_RATIO = 1.0; // 1:1
+  private static final double GEAR_RATIO = 1.0;
 
-  private double timeAtSpeed = 0.0;
   private double lastRPM = 0.0;
-  private boolean worked = false;
-  SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
-  PIDController velocityPID = new PIDController(kP, kI, kD);
-  PIDController spinUpPID = new PIDController(kP_SPIN_UP, kI_SPIN_UP, kD_SPIN_UP);
-  BangBangController bangBangController = new BangBangController();
+  private boolean shotsFired = false;
+  private double lastShotTime = 0.0;
 
-  // config
-  private final double overspinFactor = 1.0;
+  // Config
+  private final double overspinFactor = 1.07;
   private final double rpmRapidFireTolerance = 200;
   private final double rpmAccurateTolerance = 50;
-  boolean shotsFired = false; // if shot recently fired then get the bang bang out
-  private double lastTargetRPS = 0.0;
-  private final VoltageOut voltageRequest = new VoltageOut(0);
-  private double lastShotTime = 0.0;
+
+  // Spin-up slew rate (RPS per second) — prevents huge current spike from 0 to target
+  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // tune: RPS/s
+
+  // Control requests — reused each cycle
+  private final VelocityVoltage velocityRequest = new VelocityVoltage(0).withEnableFOC(true);
+  private final VoltageOut stopRequest = new VoltageOut(0);
 
   private static final InterpolatingDoubleTreeMap shotFlywheelSpeedMap =
       new InterpolatingDoubleTreeMap();
 
   static {
-    // this is example later replace
-    shotFlywheelSpeedMap.put(2.0, 4200.0); // its distance and second one is rpm
+    // example — replace with real data
+    shotFlywheelSpeedMap.put(2.0, 4200.0); // distance (m) -> rpm
   }
 
   public ShooterSubsystem() {
     var config = new TalonFXConfiguration();
-    config.MotorOutput.NeutralMode =
-        NeutralModeValue
-            .Coast; // if its breaking the it might fight the bangbang controller and fry stuff
-    config.CurrentLimits.SupplyCurrentLimit = 40.0;
-    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+
+    // Current limits: 70A burst for 1.5s, drop to 35A sustained
+    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.CurrentLimits.SupplyCurrentLimit = 70.0;
+    config.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
+    config.CurrentLimits.SupplyCurrentLowerTime = 1.5;
+    config.CurrentLimits.StatorCurrentLimit = 120.0;
+    config.CurrentLimits.StatorCurrentLimitEnable = true;
+
+    // Slot 0: steady-state — soft PID, same FF
+    config.Slot0.kS = kS;
+    config.Slot0.kV = kV;
+    config.Slot0.kA = kA;
+    config.Slot0.kP = kP_STEADY;
+    config.Slot0.kI = 0.0;
+    config.Slot0.kD = kD_STEADY;
+
+    // Slot 1: recovery — aggressive PID, same FF
+    config.Slot1.kS = kS;
+    config.Slot1.kV = kV;
+    config.Slot1.kA = kA;
+    config.Slot1.kP = kP_RECOVERY;
+    config.Slot1.kI = 0.0;
+    config.Slot1.kD = kD_RECOVERY;
+
     shooterMotor.getConfigurator().apply(config);
 
+    // Follower motor — same current limits
     var config2 = new TalonFXConfiguration();
-    config2.MotorOutput.NeutralMode =
-        NeutralModeValue
-            .Coast; // if its breaking the it might fight the bangbang controller and fry stuff
-    config2.CurrentLimits.SupplyCurrentLimit = 40.0;
-    config2.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config2.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config2.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    config2.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config2.CurrentLimits.SupplyCurrentLimit = 70.0;
+    config2.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
+    config2.CurrentLimits.SupplyCurrentLowerTime = 1.5;
+    config2.CurrentLimits.StatorCurrentLimit = 120.0;
+    config2.CurrentLimits.StatorCurrentLimitEnable = true;
     shooterMotor2.getConfigurator().apply(config2);
     shooterMotor2.setControl(new Follower(shooterMotor.getDeviceID(), MotorAlignmentValue.Opposed));
-
-    shooterRamp.reset(0.0);
-
-    SmartDashboard.putNumber("Shooter/kP", kP);
-    SmartDashboard.putNumber("Shooter/kD", kD);
-    SmartDashboard.putNumber("Shooter/kV", kV);
   }
 
   @Override
   public void periodic() {
-    double tuneP = SmartDashboard.getNumber("Shooter/kP", kP); // test
-    double tuneD = SmartDashboard.getNumber("Shooter/kD", kD);
-
-    double distance = getTargetDistance(); // change
+    double distance = getTargetDistance();
 
     double baseRPM = shotFlywheelSpeedMap.get(distance);
     double targetRPM = baseRPM * overspinFactor;
@@ -128,65 +131,39 @@ public class ShooterSubsystem extends SubsystemBase {
     double targetRPS = targetRPM / 60.0;
     double currentRPS = currentRPM / 60.0;
 
-    //    rampedSetpoint = shooterRamp.calculate(setShooterRPM(targetRPS, currentRPS, spinUpPID));
-    //    if (firstTime) {
-    //      rampedSetpoint = 2.0;
-    //      firstTime = false;
-    //    }
-
-    double rpmDrop = lastRPM - currentRPM;
-    //    shotRecentlyFired = rpmDrop > 150; // tune
+    // Detect shot fired via RPM slope
     double rpmSlope = (currentRPM - lastRPM) / 0.02;
-
     if (rpmSlope < -9500) {
       shotsFired = true;
       lastShotTime = currentTime.getAsDouble();
     }
-
-    if (shotsFired && ((currentTime.getAsDouble() - lastShotTime) > 0.2)
-        || currentRPS >= targetRPS - 20.0 / 60.0) {
+    if (shotsFired
+        && ((currentTime.getAsDouble() - lastShotTime) > 0.2
+            || currentRPS >= targetRPS - 20.0 / 60.0)) {
       shotsFired = false;
     }
 
     lastRPM = currentRPM;
+
     switch (state) {
       case SPIN_UP:
-        double voltage = setShooterRPM(targetRPS, currentRPS, spinUpPID);
-        shooterMotor.setControl(voltageRequest.withOutput(voltage));
+        // Ramp up gradually to prevent huge current spike
+        double rampedRPS = spinUpRamp.calculate(targetRPS);
+        shooterMotor.setControl(velocityRequest.withVelocity(rampedRPS).withSlot(0));
         break;
       case RAPID_FIRE:
-        if (Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance) {
-          // feed balls
-        } else {
-          // dont feed
-        }
-        break;
       case RAPID_FIRE_ACCURATE:
-        if (Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance) {
-          // feed
-        } else {
-          // no no feed
-        }
+        // No ramp — go straight to target, use recovery slot when far from setpoint
+        double error = Math.abs(targetRPS - currentRPS);
+        int slot = error > RECOVERY_THRESHOLD_RPS ? 1 : 0;
+        shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(slot));
         break;
       case IDLE:
       case EMPTY:
-        shooterMotor.setControl(voltageRequest.withOutput(0.0));
+        shooterMotor.setControl(stopRequest.withOutput(0.0));
+        spinUpRamp.reset(0.0);
         break;
     }
-    //    System.out.println(currentRPM + " " + shotsFired);
-    //    System.out.println(
-    //        "Shooter State: "
-    //            + state
-    //            + " Target RPM: "
-    //            + targetRPM
-    //            + " Current RPM: "
-    //            //            + currentRPM
-    //            + " Voltage Commanded: "
-    //            + setShooterRPM(targetRPS, currentRPS, spinUpPID)
-    //            + " Shot Recently Fired: "
-    //            + shotRecentlyFired
-    //            + " Atspeed: "
-    //            + isAtspeed(targetRPS, currentRPS, rpmRapidFireTolerance));
   }
 
   double getVelocityRevPerSec() {
@@ -194,35 +171,11 @@ public class ShooterSubsystem extends SubsystemBase {
     return (motorRPS / GEAR_RATIO);
   }
 
-  public double setShooterRPM(double targetRPS, double currentRPS, PIDController PID) {
-    //    double accelleration = (targetRPS - lastTargetRPS) / 0.02;
-    double output = 0.0;
-    if (shotsFired && currentRPS < targetRPS - (50.0 / 60.0)) {
-      //      PID.setP(kP_BOOST);
-      //      PID.setD(kD_BOOST);
-      double bangBangVolts = bangBangController.calculate(currentRPS, targetRPS) * 4.0;
-      double ffVolts = feedforward.calculate(targetRPS);
-      // maybe add deadband here for osolation?
-      output = ffVolts + bangBangVolts;
-      System.out.println("BOOST \n BOOST \n BOOST \n BOOST \n BOOST \n BOOST \n BOOST \n BOOST ");
-    } else {
-      //      PID.setP(kP_SPIN_UP);
-      //      PID.setD(kD_SPIN_UP);
-      double ffVolts = feedforward.calculate(targetRPS);
-      // maybe add deadband here for osolation?
-      double pidVolts = PID.calculate(currentRPS, targetRPS);
-      output = ffVolts + pidVolts;
-    }
-
-    lastTargetRPS = targetRPS;
-    output = MathUtil.clamp(output, -12.0, 12.0);
-    output = shooterRamp.calculate(output);
-    return output;
-  }
-
   public void setState(ShooterState newState) {
+    if (newState == ShooterState.SPIN_UP && state == ShooterState.IDLE) {
+      spinUpRamp.reset(getVelocityRevPerSec()); // start ramp from current speed
+    }
     state = newState;
-    shooterRamp.reset(0.0);
   }
 
   public ShooterState getState() {
@@ -248,22 +201,9 @@ public class ShooterSubsystem extends SubsystemBase {
     return 2.0;
   }
 
-  private boolean isAtSpeed(double targetRPS, double currentRPS, double toleranceRM) {
-    return (Math.abs(currentRPS * 60.0 - targetRPS * 60.0) <= toleranceRM);
-  }
-
   public void onEnable() {
-    double currentRPS = getVelocityRevPerSec();
-    shooterRamp.reset(shooterMotor.getMotorVoltage().getValueAsDouble());
-
-    spinUpPID.reset();
-    velocityPID.reset();
-
-    //    bangBangController
-
     lastRPM = getVelocityRevPerSec() * 60.0;
-    lastTargetRPS = 0.0;
-
     shotsFired = false;
+    spinUpRamp.reset(getVelocityRevPerSec());
   }
 }
