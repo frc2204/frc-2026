@@ -397,20 +397,37 @@ public class turrettestingSubsystem extends SubsystemBase {
     return positionError < 3.0 && !isUnwinding && !wrappingAround;
   }
 
-// for passing
+  // for passing
   public boolean isLooselyOnTarget() {
     double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
     return positionError < 15.0 && !isUnwinding;
   }
 
-  //see if pass mid, if so then pass
+  // pass when near hub (mid Y + mid X) but not in our alliance zone
   public boolean isPassingMode() {
     if (robotPose == null) return false;
+    // in our alliance zone — always shoot
     if (AllianceFlipUtil.shouldFlip()) {
-      return robotPose.getX() < FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+      if (robotPose.getX() > FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB)
+        return false;
     } else {
-      return robotPose.getX() > FieldConstants.ALLIANCEWALLTOHUB;
+      if (robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB) return false;
     }
+    return false;
+  }
+
+  public boolean justSpinUp() {
+    double robotPosex = AllianceFlipUtil.apply(robotPose).getX();
+    double midY = FieldConstants.FIELDWIDTH / 2.0;
+    double midX = FieldConstants.FIELDLENGTH / 2.0;
+    boolean nearMidY = Math.abs(robotPose.getY() - midY) < FieldConstants.FIELDWIDTH * 0.25; // tune
+    boolean pastMidX = robotPosex > midX - 2.0; // tune
+    if (nearMidY && pastMidX) {
+        return false;
+      } else if (nearMidY && !pastMidX) {
+        return true;
+    }
+    return false;
   }
 
   public double calculateTurretgoalRad(

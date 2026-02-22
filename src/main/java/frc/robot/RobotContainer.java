@@ -196,9 +196,11 @@ public class RobotContainer {
                   boolean passing = turret.isPassingMode();
                   boolean atSpeed = shooter.isAtGoalSpeed();
                   boolean looselyOnTarget = turret.isLooselyOnTarget();
-
+                  boolean justSpinUp = turret.justSpinUp();
                   if (override) {
                     shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
+                  } else if (justSpinUp) {
+                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                   } else if (passing && looselyOnTarget) {
                     shooter.setState(ShooterSubsystem.ShooterState.PASSING);
                   } else if (onTarget && atSpeed) {
