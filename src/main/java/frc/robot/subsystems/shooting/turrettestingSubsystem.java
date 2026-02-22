@@ -1,7 +1,7 @@
 package frc.robot.subsystems.shooting;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -11,7 +11,6 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
-import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
@@ -55,25 +54,14 @@ public class turrettestingSubsystem extends SubsystemBase {
   private static final Translation2d robotToTurret = new Translation2d(0.35, 0.10);
 
   private final TalonFX turretMotor = new TalonFX(20);
-  private final VoltageOut voltageRequest = new VoltageOut(0);
+  private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
 
   private static final double MAX_ANGLE = 720;
   private static final double MIN_ANGLE = -720;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
   private static final double UNWIND_THRESHOLD = 500;
-  private static final Rotation2d UNWIND_TARGET = Rotation2d.fromDegrees(0.0);
-  private static final double GEAR_RATIO = 60.8; // 1:1
-
-  private final double kS = 0.2; // static friction
-  private final double kP = 12.0; // 2
-  private final double kI = 0.1;
-  private final double kD = 0.1; // 0.1
-  private final double kV = 0.12; // 0.12
-  private final double kA = 0.02; // 0.02
-
-  private final TrapezoidProfile profile;
-  private TrapezoidProfile.State lastSetpoint;
+  private static final double GEAR_RATIO = 60.8;
 
   private Rotation2d targetAngle;
   private boolean isUnwinding;
@@ -82,7 +70,6 @@ public class turrettestingSubsystem extends SubsystemBase {
   private boolean wrappingAround;
 
   private double lastTimeAtGoal = 0;
-  private double lastTimestamp = Timer.getFPGATimestamp();
 
   private static final InterpolatingDoubleTreeMap ballFlightTimeMap =
       new InterpolatingDoubleTreeMap();
@@ -107,21 +94,33 @@ public class turrettestingSubsystem extends SubsystemBase {
               .setNumber(10)); // see if it prints out false to debug
     }
 
-    this.profile =
-        new TrapezoidProfile(
-            new TrapezoidProfile.Constraints(
-                Math.toRadians(MAX_VELOCITY_IN_DEG_PER_SEC),
-                Math.toRadians(MAX_ACCELERATION_IN_DEG_PER_SEC)));
-
-    this.lastSetpoint = new TrapezoidProfile.State(0.0, 0.0);
     this.targetAngle = new Rotation2d();
     this.isUnwinding = false;
 
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     config.CurrentLimits.SupplyCurrentLimit = 40.0;
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+
+    config.Feedback.SensorToMechanismRatio = GEAR_RATIO;
+
+    config.MotionMagic.MotionMagicCruiseVelocity = MAX_VELOCITY_IN_DEG_PER_SEC / 360.0; // 97.22 rps
+    config.MotionMagic.MotionMagicAcceleration =
+        MAX_ACCELERATION_IN_DEG_PER_SEC / 360.0; // 2.78 rps^2
+
+    config.Slot0.kP = 75.4; // lower by a lot maybe
+    config.Slot0.kI = 0.0;
+    config.Slot0.kD = 0.63;
+    config.Slot0.kS = 0.2;
+    config.Slot0.kV = 0.754;
+    config.Slot0.kA = 0.126;
+
+    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = MAX_ANGLE / 360.0; // 2.0 rotations
+    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = MIN_ANGLE / 360.0; // -2.0 rotations
+
     turretMotor.getConfigurator().apply(config);
     turretMotor.setPosition(0);
   }
@@ -150,9 +149,6 @@ public class turrettestingSubsystem extends SubsystemBase {
             .rotateBy(robotPose.getRotation());
 
     double currentPositionDeg = getAbsolutePositionDeg();
-    double currentVelocityDegPerSec = getVelocityDegPerSec();
-
-    double voltage = 0.0;
 
     setTARGET_POSE();
     if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
@@ -200,9 +196,10 @@ public class turrettestingSubsystem extends SubsystemBase {
                       chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
     }
 
-    //    System.out.println(targetAngle + "" + atGoal(currentPositionDeg));
-    voltage = calculate(currentPositionDeg, currentVelocityDegPerSec, 0.02);
-    turretMotor.setControl(voltageRequest.withOutput(voltage));
+    targetAngle =
+        Rotation2d.fromDegrees(MathUtil.clamp(targetAngle.getDegrees(), MIN_ANGLE, MAX_ANGLE));
+    double targetRotations = targetAngle.getDegrees() / 360.0;
+    turretMotor.setControl(motionMagicRequest.withPosition(targetRotations));
   }
 
   public void setTarget(Pose2d robotPose, Translation2d robotVelocity, double robotOmegaRadPerSec) {
@@ -284,73 +281,12 @@ public class turrettestingSubsystem extends SubsystemBase {
     return Rotation2d.fromDegrees(bestTarget);
   }
 
-  public double calculate(
-      double currentAngleDeg, double currentVelocityDegPerSec, double deltaTimeSec) {
-    //    currentAngleDeg = MathUtil.clamp(currentAngleDeg, MIN_ANGLE, MAX_ANGLE); // safe it or
-    // smth
-
-    double now = Timer.getFPGATimestamp();
-    double dt = now - lastTimestamp;
-    lastTimestamp = now;
-
-    if (dt <= 0) dt = 0.02;
-
-    targetAngle =
-        Rotation2d.fromDegrees(MathUtil.clamp(targetAngle.getDegrees(), MIN_ANGLE, MAX_ANGLE));
-    TrapezoidProfile.State goal = new TrapezoidProfile.State(targetAngle.getRadians(), 0.0);
-
-    TrapezoidProfile.State setpoint = profile.calculate(dt, lastSetpoint, goal);
-
-    double velocityError = setpoint.velocity - Math.toRadians(currentVelocityDegPerSec);
-    double positionError = setpoint.position - Math.toRadians(currentAngleDeg);
-
-    double accelleration = (setpoint.velocity - lastSetpoint.velocity) / dt;
-    //    System.out.println(
-    //        "position error: "
-    //            + Math.toDegrees(positionError)
-    //            + " velocity error: "
-    //            + Math.toDegrees(velocityError)
-    //            + " setpoint vel: "
-    //            + Math.toDegrees(setpoint.velocity)
-    //            + " acceleration: "
-    //            + Math.toDegrees(accelleration));
-    double output =
-        kP * positionError + kD * velocityError + kV * setpoint.velocity + kA * accelleration + kS;
-    output = MathUtil.clamp(output, -12.0, 12.0);
-
-    lastSetpoint = setpoint;
-
-    return output;
-
-    //    targetAngle =
-    //        Rotation2d.fromDegrees(MathUtil.clamp(targetAngle.getDegrees(), MIN_ANGLE,
-    // MAX_ANGLE));
-    //
-    //    // Simple P control (no motion profile for now)
-    //    double output = 0;
-    //    double positionError = targetAngle.getDegrees() - currentAngleDeg;
-    //    if (wrappingAround) {
-    //      double timeNotAtGoal = Timer.getFPGATimestamp() - lastTimeAtGoal;
-    //      output = kP * positionError + timeNotAtGoal * kI;
-    //      System.out.println(timeNotAtGoal * kI + "intergral");
-    //    } else {
-    //      output = kP * positionError;
-    //    }
-    //    output = MathUtil.clamp(output, -12.0, 12.0);
-    //
-    //    //    System.out.println("Error: " + positionError + " Output: " + output);
-    //
-    //    return output;
-  }
-
   public double getAbsolutePositionDeg() {
-    double motorRotations = turretMotor.getPosition().getValueAsDouble();
-    return (motorRotations / GEAR_RATIO) * 360.0;
+    return turretMotor.getPosition().getValueAsDouble() * 360.0;
   }
 
   public double getVelocityDegPerSec() {
-    double motorRPS = turretMotor.getVelocity().getValueAsDouble();
-    return (motorRPS / GEAR_RATIO) * 360.0;
+    return turretMotor.getVelocity().getValueAsDouble() * 360.0;
   }
 
   public double applyAngularLead(
@@ -454,6 +390,27 @@ public class turrettestingSubsystem extends SubsystemBase {
     }
     //    return positionError < 25.0 && velocityError < 3.0;
     return false;
+  }
+
+  public boolean isOnTarget() {
+    double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
+    return positionError < 3.0 && !isUnwinding && !wrappingAround;
+  }
+
+// for passing
+  public boolean isLooselyOnTarget() {
+    double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
+    return positionError < 15.0 && !isUnwinding;
+  }
+
+  //see if pass mid, if so then pass
+  public boolean isPassingMode() {
+    if (robotPose == null) return false;
+    if (AllianceFlipUtil.shouldFlip()) {
+      return robotPose.getX() < FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+    } else {
+      return robotPose.getX() > FieldConstants.ALLIANCEWALLTOHUB;
+    }
   }
 
   public double calculateTurretgoalRad(

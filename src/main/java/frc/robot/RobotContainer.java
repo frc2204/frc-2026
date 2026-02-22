@@ -14,14 +14,19 @@ import com.pathplanner.lib.auto.AutoBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.GenericHID;
+import edu.wpi.first.wpilibj.GenericHID.RumbleType;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.DriveCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.*;
+import frc.robot.subsystems.handoff.HandoffSubsystem;
+import frc.robot.subsystems.intake.IndexerSubsystem;
+import frc.robot.subsystems.intake.IntakeSubsystem;
 import frc.robot.subsystems.objectdetection.ObjectDetection;
 import frc.robot.subsystems.shooting.ShooterSubsystem;
 import frc.robot.subsystems.shooting.turrettestingSubsystem;
@@ -42,7 +47,10 @@ public class RobotContainer {
   // Subsystems
   private final Drive drive;
   private final Vision vision;
-  public final ShooterSubsystem shooter = new ShooterSubsystem();
+  private final ShooterSubsystem shooter = ShooterSubsystem.getInstance();
+  private final IntakeSubsystem intake = IntakeSubsystem.getInstance();
+  private final IndexerSubsystem indexer = IndexerSubsystem.getInstance();
+  private final HandoffSubsystem handoff = HandoffSubsystem.getInstance();
   private final turrettestingSubsystem turret;
   private final ObjectDetection objectDetection;
 
@@ -58,8 +66,6 @@ public class RobotContainer {
     switch (Constants.currentMode) {
       case REAL:
         // Real robot, instantiate hardware IO implementations
-        // ModuleIOTalonFX is intended for modules with TalonFX drive, TalonFX turn, and
-        // a CANcoder
         drive =
             new Drive(
                 new GyroIOPigeon2(),
@@ -73,50 +79,6 @@ public class RobotContainer {
                 drive::addVisionMeasurement,
                 new VisionIOLimelight(camera0Name, drive::getRotation));
         turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
-
-        // The ModuleIOTalonFXS implkl; p[,,,,,........;;;''''''''''''
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        // 056ementation provides an example implementation for
-        // TalonFXS controller connected to a CANdi with a PWM encoder. The
-        // implementations
-        // of ModuleIOTalonFX, ModuleIOTalonFXS, and ModuleIOSpark (from the Spark
-        // swerve
-        // template) can be freely intermixed to support alternative hardware
-        // arrangements.
-        // Please see the AdvantageKit template documentation for more information:
-        // https://docs.advantagekit.org/getting-started/template-projects/talonfx-swerve-template#custom-module-implementations
-        //
-        // drive =
-        // new Drive(
-        // new GyroIOPigeon2(),
-        // new ModuleIOTalonFXS(TunerConstants.FrontLeft),
-        // new ModuleIOTalonFXS(TunerConstants.FrontRight),
-        // new ModuleIOTalonFXS(TunerConstants.BackLeft),
-        // new ModuleIOTalonFXS(TunerConstants.BackRight));
         break;
 
       case SIM:
@@ -192,22 +154,12 @@ public class RobotContainer {
             () -> -controller.getLeftX(),
             () -> -controller.getRightX()));
 
-    // Lock to 0° when A button is held
-    //    controller
-    //        .cross()
-    //        .whileTrue(
-    //            DriveCommands.joystickDriveAtAngle(
-    //                drive,
-    //                () -> -controller.getLeftY(),
-    //                () -> -controller.getLeftX(),
-    //                () -> Rotation2d.kZero));
-
-    // Switch to X pattern when X button is pressed
+    // Cross: X pattern wheel lock
     controller.cross().onTrue(Commands.runOnce(drive::stopWithX, drive));
 
-    // Reset gyro to 0° when B button is pressed
+    // Options: reset gyro to 0°
     controller
-        .circle()
+        .options()
         .onTrue(
             Commands.runOnce(
                     () ->
@@ -216,37 +168,38 @@ public class RobotContainer {
                     drive)
                 .ignoringDisable(true));
 
-    controller
-        .circle()
-        .onTrue(
-            Commands.runOnce(
-                () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
-    ps5Controller
-        .R1()
-        .onTrue(
-            Commands.runOnce(
-                () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE), shooter));
-    ps5Controller
-        .L1()
-        .onTrue(
-            Commands.runOnce(
-                () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE_ACCURATE),
-                shooter));
+    // Triangle: spin up shooter
     controller
         .triangle()
         .onTrue(
+            Commands.runOnce(
+                () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+
+    // Circle: idle shooter
+    controller
+        .circle()
+        .onTrue(
             Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
 
-    //l2 to shoot if active, l2 and r2 to override
+    // R2 or L2: either trigger activates shooting system
+    // Both together: force fire override
     controller
-        .L2()
+        .R2()
+        .or(controller.L2())
         .whileTrue(
             Commands.run(
                 () -> {
-                  boolean override = controller.R2().getAsBoolean();
-                  boolean shiftActive = HubShiftUtil.getShiftedShiftInfo().active();
+                  boolean r2Held = controller.R2().getAsBoolean();
+                  boolean l2Held = controller.L2().getAsBoolean();
+                  boolean override = r2Held && l2Held;
+                  boolean onTarget = turret.isOnTarget();
+                  boolean passing = turret.isPassingMode();
+                  boolean atSpeed = shooter.isAtGoalSpeed();
+                  boolean looselyOnTarget = turret.isLooselyOnTarget();
 
-                  if (override || shiftActive) {
+                  if (passing && looselyOnTarget) {
+                    shooter.setState(ShooterSubsystem.ShooterState.PASSING);
+                  } else if (override || (onTarget && atSpeed)) {
                     shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
                   } else {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
@@ -254,7 +207,71 @@ public class RobotContainer {
                 },
                 shooter))
         .onFalse(
-            Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+            Commands.runOnce(
+                () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+
+    // L1: press to intake + feed indexer
+    controller
+        .L1()
+        .and(controller.R1().negate())
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  intake.intake();
+                  indexer.feed();
+                }));
+
+    // R1: press to stow intake + stop indexer
+    controller
+        .R1()
+        .and(controller.L1().negate())
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  intake.stow();
+                  indexer.stop();
+                }));
+
+    // L1 + R1 together: reverse handoff and indexer
+    controller
+        .L1()
+        .and(controller.R1())
+        .whileTrue(
+            Commands.runOnce(
+                () -> {
+                  handoff.setReverse(true);
+                  indexer.reverse();
+                }))
+        .onFalse(
+            Commands.runOnce(
+                () -> {
+                  handoff.setReverse(false);
+                  indexer.stop();
+                }));
+
+    // Shift change rumble alerts
+    Trigger tenSecWarning =
+        new Trigger(
+            () -> {
+              double remaining = HubShiftUtil.getShiftedShiftInfo().remainingTime();
+              return remaining <= 10.0 && remaining > 5.0;
+            });
+    Trigger fiveSecWarning =
+        new Trigger(
+            () -> {
+              double remaining = HubShiftUtil.getShiftedShiftInfo().remainingTime();
+              return remaining <= 5.0 && remaining > 0.0;
+            });
+
+    tenSecWarning
+        .whileTrue(Commands.run(() -> controller.getHID().setRumble(RumbleType.kBothRumble, 0.3)))
+        .onFalse(
+            Commands.runOnce(() -> controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
+
+    fiveSecWarning
+        .whileTrue(Commands.run(() -> controller.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
+        .onFalse(
+            Commands.runOnce(() -> controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
   }
 
   /**

@@ -26,7 +26,7 @@ public class HandoffSubsystem extends SubsystemBase {
   private static final double FEED_VOLTAGE = 8.0; // tune
   private static final double REVERSE_VOLTAGE = -4.0; // tune
 
-  //if beam break is blocked for this long reverse
+  // if beam break is blocked for this long reverse
   private static final double JAM_TIME_SECONDS = 0.5; // tune
   private static final double UNJAM_TIME_SECONDS = 0.3; // tune
 
@@ -56,7 +56,9 @@ public class HandoffSubsystem extends SubsystemBase {
     ShooterState shooterState = shooter.getState();
 
     boolean shouldFeed = false;
-    if (shooterState == ShooterState.RAPID_FIRE) {
+    if (shooterState == ShooterState.PASSING) {
+      shouldFeed = true; // full voltage, always feed
+    } else if (shooterState == ShooterState.RAPID_FIRE) {
       shouldFeed = shooter.isAtGoalSpeed();
     } else if (shooterState == ShooterState.RAPID_FIRE_ACCURATE) {
       shouldFeed = shooter.isAtGoalSpeedAccurate();

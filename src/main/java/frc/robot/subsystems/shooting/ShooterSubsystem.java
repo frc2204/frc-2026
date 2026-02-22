@@ -12,7 +12,7 @@ import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import java.util.function.DoubleSupplier;
+import frc.robot.subsystems.handoff.HandoffSubsystem;
 
 public class ShooterSubsystem extends SubsystemBase {
   private static final ShooterSubsystem INSTANCE = new ShooterSubsystem();
@@ -26,45 +26,43 @@ public class ShooterSubsystem extends SubsystemBase {
     SPIN_UP,
     RAPID_FIRE,
     RAPID_FIRE_ACCURATE,
+    PASSING,
     EMPTY
   }
 
   private ShooterState state = ShooterState.IDLE;
 
-  private final DoubleSupplier currentTime = Timer::getFPGATimestamp;
-
-  // Slot 0: steady-state (holding speed)
+  // holding speed
   static final double kS = 0.16;
   static final double kV = 0.104;
   static final double kA = 0.001;
   static final double kP_STEADY = 0.1; // tune
   static final double kD_STEADY = 0.0;
 
-  // Slot 1: recovery (getting back to speed after shot)
+  // getting back to speed after shot
   static final double kP_RECOVERY = 0.8; // tune — aggressive
   static final double kD_RECOVERY = 0.01; // tune — dampen overshoot
 
-  // RPM error threshold to switch slots
-  static final double RECOVERY_THRESHOLD_RPS = 200.0 / 60.0;
+  // rpm error to switch slots
+  static final double RECOVERY_THRESHOLD_RPS = 50.0 / 60.0; // low since flywheel drop is small
+
+  // delay from handoff beam break
+  private static final double BEAM_BREAK_DELAY_SECONDS = 0.15; // tune: travel time to flywheel
+  private double beamBreakTriggerTime = -1.0;
+  private boolean beamBreakPredicting = false;
 
   private final TalonFX shooterMotor = new TalonFX(1); // change ID
   private final TalonFX shooterMotor2 = new TalonFX(2); // change ID
   private static final double GEAR_RATIO = 1.0;
 
-  private double lastRPM = 0.0;
-  private boolean shotsFired = false;
-  private double lastShotTime = 0.0;
-
-  // Config
+  // config
   private final double overspinFactor = 1.07;
   private final double rpmRapidFireTolerance = 200;
   private final double rpmAccurateTolerance = 50;
 
-  // Spin-up slew rate (RPS per second) — prevents huge current spike from 0 to target
-  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // tune: RPS/s
+  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // rps
 
-  // Control requests — reused each cycle
-  private final VelocityVoltage velocityRequest = new VelocityVoltage(0).withEnableFOC(true);
+  private final VelocityVoltage velocityRequest = new VelocityVoltage(0);
   private final VoltageOut stopRequest = new VoltageOut(0);
 
   private static final InterpolatingDoubleTreeMap shotFlywheelSpeedMap =
@@ -80,7 +78,7 @@ public class ShooterSubsystem extends SubsystemBase {
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
 
-    // Current limits: 70A burst for 1.5s, drop to 35A sustained
+    // 70a burst for 1.5s drop to 35a sustained
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
     config.CurrentLimits.SupplyCurrentLimit = 70.0;
     config.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
@@ -88,7 +86,6 @@ public class ShooterSubsystem extends SubsystemBase {
     config.CurrentLimits.StatorCurrentLimit = 120.0;
     config.CurrentLimits.StatorCurrentLimitEnable = true;
 
-    // Slot 0: steady-state — soft PID, same FF
     config.Slot0.kS = kS;
     config.Slot0.kV = kV;
     config.Slot0.kA = kA;
@@ -96,7 +93,6 @@ public class ShooterSubsystem extends SubsystemBase {
     config.Slot0.kI = 0.0;
     config.Slot0.kD = kD_STEADY;
 
-    // Slot 1: recovery — aggressive PID, same FF
     config.Slot1.kS = kS;
     config.Slot1.kV = kV;
     config.Slot1.kA = kA;
@@ -106,7 +102,7 @@ public class ShooterSubsystem extends SubsystemBase {
 
     shooterMotor.getConfigurator().apply(config);
 
-    // Follower motor — same current limits
+    // follower
     var config2 = new TalonFXConfiguration();
     config2.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config2.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
@@ -131,37 +127,40 @@ public class ShooterSubsystem extends SubsystemBase {
     double targetRPS = targetRPM / 60.0;
     double currentRPS = currentRPM / 60.0;
 
-    // Detect shot fired via RPM slope
-    double rpmSlope = (currentRPM - lastRPM) / 0.02;
-    if (rpmSlope < -9500) {
-      shotsFired = true;
-      lastShotTime = currentTime.getAsDouble();
-    }
-    if (shotsFired
-        && ((currentTime.getAsDouble() - lastShotTime) > 0.2
-            || currentRPS >= targetRPS - 20.0 / 60.0)) {
-      shotsFired = false;
+    double now = Timer.getFPGATimestamp();
+    boolean handoffBeamBroken = HandoffSubsystem.getInstance().isBeamBroken();
+
+    if (handoffBeamBroken && beamBreakTriggerTime < 0) {
+      beamBreakTriggerTime = now;
+    } else if (!handoffBeamBroken) {
+      beamBreakTriggerTime = -1.0;
     }
 
-    lastRPM = currentRPM;
+    beamBreakPredicting =
+        beamBreakTriggerTime > 0 && (now - beamBreakTriggerTime) >= BEAM_BREAK_DELAY_SECONDS;
 
     switch (state) {
       case SPIN_UP:
-        // Ramp up gradually to prevent huge current spike
         double rampedRPS = spinUpRamp.calculate(targetRPS);
         shooterMotor.setControl(velocityRequest.withVelocity(rampedRPS).withSlot(0));
         break;
       case RAPID_FIRE:
       case RAPID_FIRE_ACCURATE:
-        // No ramp — go straight to target, use recovery slot when far from setpoint
+        // slot 1 if beam break or rpm error exceeds threshold
         double error = Math.abs(targetRPS - currentRPS);
-        int slot = error > RECOVERY_THRESHOLD_RPS ? 1 : 0;
+        boolean useRecovery = beamBreakPredicting || error > RECOVERY_THRESHOLD_RPS;
+        int slot = useRecovery ? 1 : 0;
         shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(slot));
+        break;
+      case PASSING:
+        shooterMotor.setControl(stopRequest.withOutput(12.0)); // full voltage for passing
         break;
       case IDLE:
       case EMPTY:
         shooterMotor.setControl(stopRequest.withOutput(0.0));
         spinUpRamp.reset(0.0);
+        beamBreakTriggerTime = -1.0;
+        beamBreakPredicting = false;
         break;
     }
   }
@@ -173,7 +172,7 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public void setState(ShooterState newState) {
     if (newState == ShooterState.SPIN_UP && state == ShooterState.IDLE) {
-      spinUpRamp.reset(getVelocityRevPerSec()); // start ramp from current speed
+      spinUpRamp.reset(getVelocityRevPerSec());
     }
     state = newState;
   }
@@ -202,8 +201,6 @@ public class ShooterSubsystem extends SubsystemBase {
   }
 
   public void onEnable() {
-    lastRPM = getVelocityRevPerSec() * 60.0;
-    shotsFired = false;
     spinUpRamp.reset(getVelocityRevPerSec());
   }
 }
