@@ -19,7 +19,7 @@ public class HubShiftUtil {
   public record ShiftInfo(
       ShiftEnum currentShift, double elapsedTime, double remainingTime, boolean active) {}
 
-  private static Timer shiftTimer = new Timer();
+  private static Timer shiftTimer = new Timer(); // fallback for practice without FMS
   private static final ShiftEnum[] shiftsEnums = ShiftEnum.values();
 
   private static final double[] shiftStartTimes = {0.0, 10.0, 35.0, 60.0, 85.0, 110.0};
@@ -71,10 +71,18 @@ public class HubShiftUtil {
     return currentSchedule;
   }
 
+  private static double getTeleopElapsed() {
+    double matchTime = DriverStation.getMatchTime();
+    if (matchTime >= 0 && DriverStation.isTeleopEnabled()) {
+      return teleopDuration - matchTime;
+    }
+    return shiftTimer.get();
+  }
+
   private static ShiftInfo getShiftInfo(
       boolean[] currentSchedule, double[] shiftStartTimes, double[] shiftEndTimes) {
-    double currentTime = shiftTimer.get();
-    double stateTimeElapsed = shiftTimer.get();
+    double currentTime = getTeleopElapsed();
+    double stateTimeElapsed = currentTime;
     double stateTimeRemaining = 0.0;
     boolean active = false;
     ShiftEnum currentShift = ShiftEnum.DISABLED;
