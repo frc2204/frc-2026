@@ -110,4 +110,16 @@ public class HandoffSubsystem extends SubsystemBase {
   public void setReverse(boolean reverse) {
     forceReverse = reverse;
   }
+
+  public String getStateString() {
+    if (forceReverse) return "REVERSING";
+    if (unjamming) return "UNJAMMING";
+    ShooterState shooterState = ShooterSubsystem.getInstance().getState();
+    if (shooterState == ShooterState.PASSING) return "FEEDING";
+    if (shooterState == ShooterState.RAPID_FIRE && ShooterSubsystem.getInstance().isAtGoalSpeed())
+      return "FEEDING";
+    if (shooterState == ShooterState.RAPID_FIRE_ACCURATE
+        && ShooterSubsystem.getInstance().isAtGoalSpeedAccurate()) return "FEEDING";
+    return "IDLE";
+  }
 }

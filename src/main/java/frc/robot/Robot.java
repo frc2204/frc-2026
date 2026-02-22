@@ -85,6 +85,7 @@ public class Robot extends LoggedRobot {
     // This must be called from the robot's periodic block in order for anything in
     // the Command-based framework to work.
     CommandScheduler.getInstance().run();
+    robotContainer.updateDashboard();
 
     // Return to non-RT thread priority (do not modify the first argument)
     // Threads.setCurrentThreadPriority(false, 10);
@@ -124,6 +125,7 @@ public class Robot extends LoggedRobot {
     // continue until interrupted by another command, remove
     // this line or comment it out.
     LimelightHelpers.SetIMUMode("limelight-four", 4);
+    frc.robot.util.HubShiftUtil.initialize();
 
     ShooterSubsystem.getInstance().onEnable();
     if (autonomousCommand != null) {
