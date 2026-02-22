@@ -24,8 +24,7 @@ public class IndexerSubsystem extends SubsystemBase {
 
   private IndexerState state = IndexerState.STOPPED;
 
-
-  private static final int INDEXER_MOTOR_ID = 23 //tune;
+  private static final int INDEXER_MOTOR_ID = 23; // tune
 
   private static final double FEED_VOLTAGE = 6.0; // tune
   private static final double REVERSE_VOLTAGE = -4.0; // tune
