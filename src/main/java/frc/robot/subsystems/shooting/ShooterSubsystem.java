@@ -118,10 +118,13 @@ public class ShooterSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    double distance = getTargetDistance();
-
-    double baseRPM = shotFlywheelSpeedMap.get(distance);
-    double targetRPM = baseRPM * overspinFactor;
+    double targetRPM;
+    if (targetRPMOverride > 0) {
+      targetRPM = targetRPMOverride;
+    } else {
+      double distance = getTargetDistance();
+      targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    }
     double currentRPM = getVelocityRevPerSec() * 60.0;
 
     double targetRPS = targetRPM / 60.0;
@@ -170,6 +173,10 @@ public class ShooterSubsystem extends SubsystemBase {
     return (motorRPS / GEAR_RATIO);
   }
 
+  public double getVelocityRPM() {
+    return getVelocityRevPerSec() * 60.0;
+  }
+
   public void setState(ShooterState newState) {
     if (newState == ShooterState.SPIN_UP && state == ShooterState.IDLE) {
       spinUpRamp.reset(getVelocityRevPerSec());
@@ -181,24 +188,31 @@ public class ShooterSubsystem extends SubsystemBase {
     return state;
   }
 
+  private double getEffectiveTargetRPM() {
+    if (targetRPMOverride > 0) {
+      return targetRPMOverride;
+    }
+    return shotFlywheelSpeedMap.get(getTargetDistance()) * overspinFactor;
+  }
+
   public boolean isAtGoalSpeed() {
-    double distance = getTargetDistance();
-    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
-    double currentRPM = getVelocityRevPerSec() * 60.0;
-    return Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance;
+    return Math.abs(getVelocityRPM() - getEffectiveTargetRPM()) <= rpmRapidFireTolerance;
   }
 
   public boolean isAtGoalSpeedAccurate() {
-    double distance = getTargetDistance();
-    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
-    double currentRPM = getVelocityRevPerSec() * 60.0;
-    return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
+    return Math.abs(getVelocityRPM() - getEffectiveTargetRPM()) <= rpmAccurateTolerance;
   }
 
   private double targetDistance = 0.0;
+  private double targetRPMOverride = -1.0; // negative = use map, positive = use this RPM
 
   public void setTargetDistance(double distance) {
     targetDistance = distance;
+  }
+
+  /** Override target RPM directly (for tuning). Set to -1 to use distance-based map. */
+  public void setTargetRPMOverride(double rpm) {
+    targetRPMOverride = rpm;
   }
 
   private double getTargetDistance() {
