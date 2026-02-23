@@ -105,6 +105,7 @@ public class Robot extends LoggedRobot {
   @Override
   public void autonomousInit() {
     LimelightHelpers.SetIMUMode("limelight-four", 4);
+    ShooterSubsystem.getInstance().onEnable();
     autonomousCommand = robotContainer.getAutonomousCommand();
 
     // schedule the autonomous command (example)
