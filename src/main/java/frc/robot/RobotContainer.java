@@ -42,7 +42,9 @@ import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionIO;
 import frc.robot.subsystems.vision.VisionIOLimelight;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
+import frc.robot.util.FieldConstants;
 import frc.robot.util.HubShiftUtil;
+import frc.robot.util.geometry.AllianceFlipUtil;
 import java.util.List;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
@@ -66,7 +68,7 @@ public class RobotContainer {
 
   // Controller
   private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
-//  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(1);
+  //  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(1);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
@@ -206,16 +208,33 @@ public class RobotContainer {
    * edu.wpi.first.wpilibj2.command.button.JoystickButton}.
    */
   private void configureButtonBindings() {
-    // Default command, normal field-relative drive
+    // Default command, field-relative drive with shooting speed limit
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
             drive,
-            () -> -ps5Controller.getLeftY(),
-            () -> -ps5Controller.getLeftX(),
-            () -> -ps5Controller.getRightX()));
+            () -> -ps5Controller.getLeftY() * getShootingSpeedFactor(),
+            () -> -ps5Controller.getLeftX() * getShootingSpeedFactor(),
+            () -> -ps5Controller.getRightX() * getShootingSpeedFactor()));
 
-    // Cross: X pattern wheel lock
-//    controller.cross().onTrue(Commands.runOnce(drive::stopWithX, drive));
+    // Square: override speed limit (full speed while held)
+    ps5Controller
+        .square()
+        .whileTrue(
+            DriveCommands.joystickDrive(
+                drive,
+                () -> -ps5Controller.getLeftY(),
+                () -> -ps5Controller.getLeftX(),
+                () -> -ps5Controller.getRightX()));
+
+    double slowFactor = 0.25; // tune
+    ps5Controller
+        .cross()
+        .whileTrue(
+            DriveCommands.joystickDrive(
+                drive,
+                () -> -ps5Controller.getLeftY() * slowFactor,
+                () -> -ps5Controller.getLeftX() * slowFactor,
+                () -> -ps5Controller.getRightX() * slowFactor));
 
     // Options: reset gyro to 0°
     ps5Controller
@@ -252,6 +271,7 @@ public class RobotContainer {
                   boolean r2Held = ps5Controller.R2().getAsBoolean();
                   boolean l2Held = ps5Controller.L2().getAsBoolean();
                   boolean override = r2Held && l2Held;
+                  boolean shiftActive = HubShiftUtil.getShiftedShiftInfo().active();
                   boolean onTarget = turret.isOnTarget();
                   boolean passing = turret.isPassingMode();
                   boolean atSpeed = shooter.isAtGoalSpeed();
@@ -260,6 +280,8 @@ public class RobotContainer {
                   boolean justSpinUp = turret.justSpinUp();
                   if (override) {
                     shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
+                  } else if (!shiftActive) {
+                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                   } else if (justSpinUp) {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                   } else if (passing && looselyOnTarget) {
@@ -329,12 +351,14 @@ public class RobotContainer {
             });
 
     tenSecWarning
-        .whileTrue(Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.3)))
+        .whileTrue(
+            Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.3)))
         .onFalse(
             Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
 
     fiveSecWarning
-        .whileTrue(Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
+        .whileTrue(
+            Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
         .onFalse(
             Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
   }
@@ -392,5 +416,30 @@ public class RobotContainer {
 
     // Object detection
     SmartDashboard.putNumber("Detection/Ball Count", objectDetection.getTrackedFuelCount());
+  }
+
+// returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far then 1
+  private double getShootingSpeedFactor() {
+    boolean shooting = ps5Controller.R2().getAsBoolean() || ps5Controller.L2().getAsBoolean();
+    if (!shooting) return 1.0;
+
+    Pose2d pose = drive.getPose();
+    double hubDist;
+    if (AllianceFlipUtil.shouldFlip()) {
+      // red aliacn so hub is near x = FIELDLENGTH - ALLIANCEWALLTOHUB
+      double hubX = FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+      if (pose.getX() < hubX) return 1.0; // not in alliance zone
+      hubDist = pose.getX() - hubX;
+    } else {
+      // blue hub is near x = ALLIANCEWALLTOHUB
+      double hubX = FieldConstants.ALLIANCEWALLTOHUB;
+      if (pose.getX() > hubX) return 1.0; // not in alliance zone
+      hubDist = hubX - pose.getX();
+    }
+
+    double minSpeed = 0.3; // tune: speed when right at hub
+    double maxDist = FieldConstants.ALLIANCEWALLTOHUB; // tune: distance at which full speed
+    double factor = minSpeed + (1.0 - minSpeed) * Math.min(hubDist / maxDist, 1.0);
+    return factor;
   }
 }
