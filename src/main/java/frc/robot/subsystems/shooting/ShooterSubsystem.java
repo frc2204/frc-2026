@@ -73,7 +73,7 @@ public class ShooterSubsystem extends SubsystemBase {
     shotFlywheelSpeedMap.put(2.0, 4200.0); // distance (m) -> rpm
   }
 
-  public ShooterSubsystem() {
+  private ShooterSubsystem() {
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
@@ -195,9 +195,14 @@ public class ShooterSubsystem extends SubsystemBase {
     return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
   }
 
+  private double targetDistance = 0.0;
+
+  public void setTargetDistance(double distance) {
+    targetDistance = distance;
+  }
+
   private double getTargetDistance() {
-    // find distance somehow idk prob pose
-    return 2.0;
+    return targetDistance;
   }
 
   public void onEnable() {
