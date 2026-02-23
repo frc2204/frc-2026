@@ -2,11 +2,11 @@ package frc.robot.subsystems.shooting;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.PositionVoltage;
-import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 public class HoodSubsystem extends SubsystemBase {
@@ -31,7 +31,13 @@ public class HoodSubsystem extends SubsystemBase {
 
   private final TalonFX hoodMotor = new TalonFX(HOOD_MOTOR_ID);
   private final PositionVoltage positionRequest = new PositionVoltage(0);
-  private final VoltageOut stopRequest = new VoltageOut(0);
+
+  private static final InterpolatingDoubleTreeMap hoodAngleMap = new InterpolatingDoubleTreeMap();
+
+  static {
+    // distance in meters and   hood position in rotations
+    hoodAngleMap.put(2.0, 0.1);
+  }
 
   private double targetPositionRotations = 0.0;
 
@@ -66,6 +72,10 @@ public class HoodSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
+  }
+
+  public void setTargetDistance(double distanceMeters) {
+    targetPositionRotations = hoodAngleMap.get(distanceMeters);
   }
 
   public void setPosition(double positionRotations) {
