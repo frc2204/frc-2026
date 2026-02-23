@@ -37,15 +37,10 @@ public class TurretSubsystem extends SubsystemBase {
   private static double VISION_LATENCY;
 
   private final NetworkTable limelightTable;
-  private final Translation2d HUB_POSE =
-      AllianceFlipUtil.apply(FieldConstants.HUBPOSE.getTranslation());
-  private final Translation2d TOPTARGET =
-      AllianceFlipUtil.apply(FieldConstants.TOPTARGET.getTranslation());
-  private final Translation2d BOTTOMTARGET =
-      AllianceFlipUtil.apply(FieldConstants.BOTTOMTARGET.getTranslation());
-  private Translation2d TARGET_POSE = HUB_POSE;
+  private Translation2d TARGET_POSE = new Translation2d();
+  private boolean priorityIdSet = false;
   private static final double VISION_KP = 0.015;
-  Pose2d robotPose;
+  private Pose2d robotPose;
   private final Supplier<Pose2d> poseSupplier;
   private final Supplier<ChassisSpeeds> chassisSpeedsSupplier;
 
@@ -65,7 +60,7 @@ public class TurretSubsystem extends SubsystemBase {
 
   private Rotation2d targetAngle;
   private boolean isUnwinding;
-  public double lastUnwindTime = 0.0;
+  private double lastUnwindTime = Double.POSITIVE_INFINITY;
 
   private boolean wrappingAround;
 
@@ -84,15 +79,6 @@ public class TurretSubsystem extends SubsystemBase {
     this.poseSupplier = poseSupplier;
     this.chassisSpeedsSupplier = chassisSpeedsSupplier;
     limelightTable = NetworkTableInstance.getDefault().getTable("limelight-three");
-    if (AllianceFlipUtil.shouldFlip()) {
-      limelightTable.getEntry("priorityid").setNumber(25); // focus on blue hub tag
-    } else {
-      limelightTable.getEntry("priorityid").setNumber(10); // focus on red hub tag
-      System.out.print(
-          limelightTable
-              .getEntry("priorityid")
-              .setNumber(10)); // see if it prints out false to debug
-    }
 
     this.targetAngle = new Rotation2d();
     this.isUnwinding = false;
@@ -127,6 +113,16 @@ public class TurretSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Set limelight priority ID once alliance is known
+    if (!priorityIdSet && edu.wpi.first.wpilibj.DriverStation.getAlliance().isPresent()) {
+      if (AllianceFlipUtil.shouldFlip()) {
+        limelightTable.getEntry("priorityid").setNumber(25);
+      } else {
+        limelightTable.getEntry("priorityid").setNumber(10);
+      }
+      priorityIdSet = true;
+    }
+
     LimelightHelpers.setCameraPose_RobotSpace(
         "limelight",
         0.0127, // x meters forward
@@ -142,13 +138,17 @@ public class TurretSubsystem extends SubsystemBase {
                 + limelightTable.getEntry("cl").getDouble(0.0))
             / 1000.0;
     robotPose = poseSupplier.get();
+    ChassisSpeeds chassisSpeeds = chassisSpeedsSupplier.get();
     robotFieldVelocity =
-        new Translation2d(
-                chassisSpeedsSupplier.get().vxMetersPerSecond,
-                chassisSpeedsSupplier.get().vyMetersPerSecond)
+        new Translation2d(chassisSpeeds.vxMetersPerSecond, chassisSpeeds.vyMetersPerSecond)
             .rotateBy(robotPose.getRotation());
 
     double currentPositionDeg = getAbsolutePositionDeg();
+
+    // Update shooter and hood with current distance to hub
+    double distanceToHub = getDistanceFromHub(robotPose);
+    ShooterSubsystem.getInstance().setTargetDistance(distanceToHub);
+    HoodSubsystem.getInstance().setTargetDistance(distanceToHub);
 
     setTARGET_POSE();
     if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
@@ -159,9 +159,7 @@ public class TurretSubsystem extends SubsystemBase {
           Rotation2d.fromRadians(
               MathUtil.angleModulus(
                   calculateTurretgoalRad(
-                      robotPose,
-                      robotFieldVelocity,
-                      chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
+                      robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond)));
       lastUnwindTime = Timer.getFPGATimestamp();
       //      System.out.println("unwinding");
     } else if (isUnwinding && atGoal()) {
@@ -178,9 +176,7 @@ public class TurretSubsystem extends SubsystemBase {
           findBestTarget(
               Rotation2d.fromRadians(
                   calculateTurretgoalRad(
-                      robotPose,
-                      robotFieldVelocity,
-                      chassisSpeedsSupplier.get().omegaRadiansPerSecond)),
+                      robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond)),
               currentPositionDeg);
       //      System.out.println("targeting");
     }
@@ -191,9 +187,7 @@ public class TurretSubsystem extends SubsystemBase {
           Rotation2d.fromRadians(
               MathUtil.angleModulus(
                   calculateTurretgoalRad(
-                      robotPose,
-                      robotFieldVelocity,
-                      chassisSpeedsSupplier.get().omegaRadiansPerSecond)));
+                      robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond)));
     }
 
     targetAngle =
@@ -311,17 +305,20 @@ public class TurretSubsystem extends SubsystemBase {
       double robotOmegaRadPerSec,
       Rotation2d robotHeading,
       Translation2d turretToHub) {
+    double distance = turretToHub.getNorm();
+    if (distance < 0.01) {
+      return turretAngleRad;
+    }
+
     Translation2d turretVelocity =
         robotVelocity.plus(
             new Translation2d(
                 -robotOmegaRadPerSec * robotToTurret.getY(),
                 robotOmegaRadPerSec * robotToTurret.getX()));
 
-    Translation2d shotDirection = turretToHub.div(turretToHub.getNorm());
+    Translation2d shotDirection = turretToHub.div(distance);
 
     Translation2d lateralDir = new Translation2d(-shotDirection.getY(), shotDirection.getX());
-
-    double distance = turretToHub.getNorm();
     double lateralVelocity =
         turretVelocity.getX() * lateralDir.getX() + turretVelocity.getY() * lateralDir.getY();
 
@@ -355,11 +352,15 @@ public class TurretSubsystem extends SubsystemBase {
     return false; // not hub tag
   }
 
+  private Translation2d getHubPosition() {
+    return AllianceFlipUtil.apply(FieldConstants.HUBPOSE.getTranslation());
+  }
+
   public double getDistanceFromHub(Pose2d robotPose) {
     Translation2d turretPose =
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
 
-    Translation2d toHub = HUB_POSE.minus(turretPose);
+    Translation2d toHub = getHubPosition().minus(turretPose);
 
     return toHub.getNorm();
   }
@@ -368,7 +369,7 @@ public class TurretSubsystem extends SubsystemBase {
     Translation2d turretPose =
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
 
-    Translation2d toHub = HUB_POSE.minus(turretPose);
+    Translation2d toHub = getHubPosition().minus(turretPose);
 
     return toHub.getAngle();
   }
@@ -400,20 +401,20 @@ public class TurretSubsystem extends SubsystemBase {
   // for passing
   public boolean isLooselyOnTarget() {
     double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
-    return positionError < 15.0 && !isUnwinding;
+    return positionError < 15.0 && !isUnwinding && !wrappingAround;
   }
 
   // pass when near hub (mid Y + mid X) but not in our alliance zone
   public boolean isPassingMode() {
     if (robotPose == null) return false;
-    // in our alliance zone — always shoot
+    // in our alliance zone — always shoot, never pass
     if (AllianceFlipUtil.shouldFlip()) {
       if (robotPose.getX() > FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB)
         return false;
     } else {
       if (robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB) return false;
     }
-    return false;
+    return true;
   }
 
   public boolean justSpinUp() {
@@ -422,7 +423,9 @@ public class TurretSubsystem extends SubsystemBase {
     double midX = FieldConstants.FIELDLENGTH / 2.0;
     boolean nearMidY = Math.abs(robotPose.getY() - midY) < FieldConstants.FIELDWIDTH * 0.25; // tune
     boolean pastMidX = robotPosex > midX - 2.0; // tune
-    if (nearMidY && pastMidX) {
+    if (robotPosex < FieldConstants.ALLIANCEWALLTOHUB) {
+      return false;
+    } else if (nearMidY && pastMidX) {
       return false;
     } else if (nearMidY && !pastMidX) {
       return true;
@@ -464,44 +467,28 @@ public class TurretSubsystem extends SubsystemBase {
   // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past
   // mid
   public void setTARGET_POSE() {
-    if (AllianceFlipUtil.shouldFlip()) { // on red alliance
+    Translation2d hubPos = getHubPosition();
+    Translation2d topTarget = AllianceFlipUtil.apply(FieldConstants.TOPTARGET.getTranslation());
+    Translation2d bottomTarget =
+        AllianceFlipUtil.apply(FieldConstants.BOTTOMTARGET.getTranslation());
 
-      if (robotPose.getX()
-          < FieldConstants.FIELDLENGTH
-              - FieldConstants
-                  .ALLIANCEWALLTOHUB) { // if its in mid target the side walls to put balls over to
-        // our side
-        if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
-          TARGET_POSE =
-              TOPTARGET; // top half of field, target top right bump to get fuel to our side
-        } else { // maybe do something here to tell feeder we changing, so we dont fire when we
-          // arent at goal, or use atGoal()
-          TARGET_POSE =
-              BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
-          // side
-        }
+    boolean inAllianceZone;
+    if (AllianceFlipUtil.shouldFlip()) {
+      inAllianceZone =
+          robotPose.getX() > FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+    } else {
+      inAllianceZone = robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB;
+    }
+
+    if (!inAllianceZone) {
+      // in mid — target bumps to pass fuel to our side
+      if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
+        TARGET_POSE = topTarget;
       } else {
-        TARGET_POSE = HUB_POSE; // if not target our hub
+        TARGET_POSE = bottomTarget;
       }
-
-    } else { // blue alliance
-
-      if (robotPose.getX()
-          > FieldConstants
-              .ALLIANCEWALLTOHUB) { // if its in mid target the side walls to put balls over to our
-        // side
-        if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
-          TARGET_POSE =
-              TOPTARGET; // top half of field, target top right bump to get fuel to our side
-        } else { // maybe do something here to tell feeder we changing, so we dont fire when we
-          // arent at goal, or use atGoal()
-          TARGET_POSE =
-              BOTTOMTARGET; // bottom half of field, target bottom left bump to get fuel to our
-          // side
-        }
-      } else {
-        TARGET_POSE = HUB_POSE; // if not target our hub
-      }
+    } else {
+      TARGET_POSE = hubPos;
     }
   }
 }
