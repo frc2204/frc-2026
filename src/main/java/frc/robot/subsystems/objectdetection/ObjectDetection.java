@@ -39,8 +39,8 @@ public class ObjectDetection extends SubsystemBase {
   private static final double FIELD_BOUNDARY_MARGIN = 0.3;
 
   // Tracking parameters
-  private static final double DEDUP_DISTANCE_METERS = 0.6; //0.3
-  private static final double EXPIRY_SECONDS = 0.5; //2
+  private static final double DEDUP_DISTANCE_METERS = 0.6; // 0.3
+  private static final double EXPIRY_SECONDS = 0.5; // 2
   private static final double PICKUP_RADIUS_METERS = 0.5;
   private static final double SMOOTHING_ALPHA = 0.7;
 
