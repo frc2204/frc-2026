@@ -175,6 +175,7 @@ public class AdaptiveAutoCommand extends Command {
         if (currentWaypointIndex < waypoints.size()) {
           startPathToWaypoint();
         }
+        return; // avoid double advance if new path finishes immediately
       }
     }
 
