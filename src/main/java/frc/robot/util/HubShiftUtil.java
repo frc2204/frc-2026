@@ -88,8 +88,14 @@ public class HubShiftUtil {
     ShiftEnum currentShift = ShiftEnum.DISABLED;
 
     if (DriverStation.isAutonomousEnabled()) {
-      stateTimeElapsed = currentTime;
-      stateTimeRemaining = autoEndTime - currentTime;
+      double autoMatchTime = DriverStation.getMatchTime();
+      if (autoMatchTime >= 0) {
+        stateTimeElapsed = autoEndTime - autoMatchTime;
+        stateTimeRemaining = autoMatchTime;
+      } else {
+        stateTimeElapsed = currentTime;
+        stateTimeRemaining = autoEndTime - currentTime;
+      }
       active = true;
       currentShift = ShiftEnum.AUTO;
     } else if (DriverStation.isEnabled()) {
