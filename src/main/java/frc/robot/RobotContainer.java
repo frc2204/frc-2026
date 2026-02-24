@@ -309,7 +309,9 @@ public class RobotContainer {
                 () -> {
                   intake.intake();
                   indexer.feed();
-                }));
+                },
+                intake,
+                indexer));
 
     // R1: press to stow intake + stop indexer
     ps5Controller
@@ -320,7 +322,9 @@ public class RobotContainer {
                 () -> {
                   intake.stow();
                   indexer.stop();
-                }));
+                },
+                intake,
+                indexer));
 
     // L1 + R1 together: reverse handoff and indexer
     ps5Controller
@@ -331,13 +335,17 @@ public class RobotContainer {
                 () -> {
                   handoff.setReverse(true);
                   indexer.reverse();
-                }))
+                },
+                handoff,
+                indexer))
         .onFalse(
             Commands.runOnce(
                 () -> {
                   handoff.setReverse(false);
                   indexer.stop();
-                }));
+                },
+                handoff,
+                indexer));
 
     // Shift change rumble alerts — 0.5s pulse at 10s and 5s remaining
     Trigger tenSecWarning =
