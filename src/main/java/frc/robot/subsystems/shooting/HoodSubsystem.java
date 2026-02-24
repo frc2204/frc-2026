@@ -52,9 +52,9 @@ public class HoodSubsystem extends SubsystemBase {
     config.CurrentLimits.StatorCurrentLimitEnable = true;
 
     config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
-    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = FORWARD_SOFT_LIMIT * GEAR_RATIO;
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = FORWARD_SOFT_LIMIT;
     config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
-    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = REVERSE_SOFT_LIMIT * GEAR_RATIO;
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = REVERSE_SOFT_LIMIT;
 
     config.Slot0.kP = kP;
     config.Slot0.kI = kI;
