@@ -63,7 +63,7 @@ public class ShooterSubsystem extends SubsystemBase {
   private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // rps
 
   private final VelocityVoltage velocityRequest = new VelocityVoltage(0);
-  private final VoltageOut stopRequest = new VoltageOut(0);
+  private final VoltageOut voltageRequest = new VoltageOut(0);
 
   private static final InterpolatingDoubleTreeMap shotFlywheelSpeedMap =
       new InterpolatingDoubleTreeMap();
@@ -153,11 +153,11 @@ public class ShooterSubsystem extends SubsystemBase {
         shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(slot));
         break;
       case PASSING:
-        shooterMotor.setControl(stopRequest.withOutput(12.0)); // full voltage for passing
+        shooterMotor.setControl(voltageRequest.withOutput(12.0)); // full voltage for passing
         break;
       case IDLE:
       case EMPTY:
-        shooterMotor.setControl(stopRequest.withOutput(0.0));
+        shooterMotor.setControl(voltageRequest.withOutput(0.0));
         spinUpRamp.reset(0.0);
         beamBreakTriggerTime = -1.0;
         beamBreakPredicting = false;
