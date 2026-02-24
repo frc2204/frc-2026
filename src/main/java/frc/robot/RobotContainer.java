@@ -65,6 +65,7 @@ public class RobotContainer {
   private final HoodSubsystem hood = HoodSubsystem.getInstance();
   private final TurretSubsystem turret;
   private final ObjectDetection objectDetection;
+  private final frc.robot.subsystems.leds.CANdleSubsystem leds;
 
   // Controller
   private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
@@ -128,6 +129,8 @@ public class RobotContainer {
 
     // Set up object detection
     objectDetection = new ObjectDetection(drive::getPose);
+
+    leds = new frc.robot.subsystems.leds.CANdleSubsystem(turret);
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -418,7 +421,8 @@ public class RobotContainer {
     SmartDashboard.putNumber("Detection/Ball Count", objectDetection.getTrackedFuelCount());
   }
 
-// returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far then 1
+  // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far
+  // then 1
   private double getShootingSpeedFactor() {
     boolean shooting = ps5Controller.R2().getAsBoolean() || ps5Controller.L2().getAsBoolean();
     if (!shooting) return 1.0;
