@@ -151,43 +151,22 @@ public class TurretSubsystem extends SubsystemBase {
     HoodSubsystem.getInstance().setTargetDistance(distanceToHub);
 
     setTARGET_POSE();
-    if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
+    double goalRad =
+        calculateTurretgoalRad(robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond);
 
+    if (Math.abs(currentPositionDeg) > UNWIND_THRESHOLD) {
       isUnwinding = true;
-      //      targetAngle = UNWIND_TARGET;
-      targetAngle =
-          Rotation2d.fromRadians(
-              MathUtil.angleModulus(
-                  calculateTurretgoalRad(
-                      robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond)));
       lastUnwindTime = Timer.getFPGATimestamp();
-      //      System.out.println("unwinding");
     } else if (isUnwinding && atGoal()) {
-      // Finished unwinding
-      //      System.out.println(
-      //
-      // "DONEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE");
       isUnwinding = false;
     } else if (wrappingAround && atGoal()) {
       wrappingAround = false;
     }
-    if (!isUnwinding && !wrappingAround) {
-      targetAngle =
-          findBestTarget(
-              Rotation2d.fromRadians(
-                  calculateTurretgoalRad(
-                      robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond)),
-              currentPositionDeg);
-      //      System.out.println("targeting");
-    }
+
     if (isUnwinding) {
-      System.out.println("is unwinding");
-      //      targetAngle = UNWIND_TARGET;
-      targetAngle =
-          Rotation2d.fromRadians(
-              MathUtil.angleModulus(
-                  calculateTurretgoalRad(
-                      robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond)));
+      targetAngle = Rotation2d.fromRadians(MathUtil.angleModulus(goalRad));
+    } else if (!wrappingAround) {
+      targetAngle = findBestTarget(Rotation2d.fromRadians(goalRad), currentPositionDeg);
     }
 
     targetAngle =
@@ -310,11 +289,12 @@ public class TurretSubsystem extends SubsystemBase {
       return turretAngleRad;
     }
 
-    Translation2d turretVelocity =
-        robotVelocity.plus(
-            new Translation2d(
+    Translation2d angularContribution =
+        new Translation2d(
                 -robotOmegaRadPerSec * robotToTurret.getY(),
-                robotOmegaRadPerSec * robotToTurret.getX()));
+                robotOmegaRadPerSec * robotToTurret.getX())
+            .rotateBy(robotHeading);
+    Translation2d turretVelocity = robotVelocity.plus(angularContribution);
 
     Translation2d shotDirection = turretToHub.div(distance);
 
@@ -435,8 +415,12 @@ public class TurretSubsystem extends SubsystemBase {
 
   public double calculateTurretgoalRad(
       Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
-    setTarget(robotPose, robotVelocity, robotOmega);
-    double angle = targetAngle.getRadians();
+    //base turret angle robot relative poointing towards hub
+    Translation2d turretPose =
+        robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
+    Translation2d toTargetPose = TARGET_POSE.minus(turretPose);
+    double fieldAngle = Math.atan2(toTargetPose.getY(), toTargetPose.getX());
+    double angle = MathUtil.angleModulus(fieldAngle - robotPose.getRotation().getRadians());
     angle = applyAngularLead(angle, robotOmega, robotPose);
 
     angle =
