@@ -45,8 +45,8 @@ public class TurretSubsystem extends SubsystemBase {
   private final TalonFX turretMotor = new TalonFX(20);
   private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
 
-  private static final double MAX_ANGLE = 720;
-  private static final double MIN_ANGLE = -720;
+  private static final double MAX_ANGLE = 75;
+  private static final double MIN_ANGLE = -75;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
   private static final double UNWIND_THRESHOLD = 500;
@@ -89,7 +89,7 @@ public class TurretSubsystem extends SubsystemBase {
     config.MotionMagic.MotionMagicAcceleration =
         MAX_ACCELERATION_IN_DEG_PER_SEC / 360.0; // 2.78 rps^2
 
-    config.Slot0.kP = 75.4; // lower by a lot maybe
+    config.Slot0.kP = 60.0; // lower by a lot maybe
     config.Slot0.kI = 0.0;
     config.Slot0.kD = 0.63;
     config.Slot0.kS = 0.2;
@@ -358,7 +358,7 @@ public class TurretSubsystem extends SubsystemBase {
 
   public double calculateTurretgoalRad(
       Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
-    //base turret angle robot relative poointing towards hub
+    // base turret angle robot relative poointing towards hub
     Translation2d turretPose =
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
     Translation2d toTargetPose = targetPose.minus(turretPose);
