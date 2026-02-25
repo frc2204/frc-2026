@@ -40,13 +40,14 @@ public class TurretSubsystem extends SubsystemBase {
 
   private Translation2d robotFieldVelocity;
 
-  private static final Translation2d robotToTurret = new Translation2d(0.35, 0.10);
+  private static final Translation2d robotToTurret = new Translation2d(-0.35, 0.10);
 
   private final TalonFX turretMotor = new TalonFX(20);
   private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
 
   private static final double MAX_ANGLE = 75;
   private static final double MIN_ANGLE = -75;
+  private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
   private static final double UNWIND_THRESHOLD = 500;
@@ -363,7 +364,9 @@ public class TurretSubsystem extends SubsystemBase {
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
     Translation2d toTargetPose = targetPose.minus(turretPose);
     double fieldAngle = Math.atan2(toTargetPose.getY(), toTargetPose.getX());
-    double angle = MathUtil.angleModulus(fieldAngle - robotPose.getRotation().getRadians());
+    double angle =
+        MathUtil.angleModulus(
+            fieldAngle - robotPose.getRotation().getRadians() - TURRET_FORWARD_OFFSET_RAD);
     angle = applyAngularLead(angle, robotOmega, robotPose);
 
     angle =
