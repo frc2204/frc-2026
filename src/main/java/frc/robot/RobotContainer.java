@@ -65,6 +65,7 @@ public class RobotContainer {
   private final TurretSubsystem turret;
   private final ObjectDetection objectDetection;
   private final frc.robot.subsystems.leds.CANdleSubsystem leds;
+  private final frc.robot.util.DriverViewSelector driverView;
 
   // Controller
   private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
@@ -133,6 +134,7 @@ public class RobotContainer {
     objectDetection = new ObjectDetection(drive::getPose);
 
     leds = new frc.robot.subsystems.leds.CANdleSubsystem(turret);
+    driverView = new frc.robot.util.DriverViewSelector(drive::getPose, turret::getAbsolutePositionDeg);
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -349,6 +351,11 @@ public class RobotContainer {
                 handoff,
                 indexer));
 
+//    // D-pad up: chase nearest detected ball
+//    ps5Controller
+//        .povUp()
+//        .whileTrue(new ChaseBallCommand(drive, objectDetection, intake));
+
     // Shift change rumble alerts — 0.5s pulse at 10s and 5s remaining
     Trigger tenSecWarning =
         new Trigger(
@@ -429,6 +436,9 @@ public class RobotContainer {
 
     // Object detection
     SmartDashboard.putNumber("Detection/Ball Count", objectDetection.getTrackedFuelCount());
+
+    // Driver camera view
+    driverView.update();
   }
 
   // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far
