@@ -103,7 +103,7 @@ public class TurretSubsystem extends SubsystemBase {
     config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = MIN_ANGLE / 360.0; // -2.0 rotations
 
     turretMotor.getConfigurator().apply(config);
-    turretMotor.setPosition(0);
+    turretMotor.setPosition(75.0 / 360.0);
   }
 
   @Override
