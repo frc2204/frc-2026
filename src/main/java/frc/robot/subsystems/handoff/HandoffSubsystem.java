@@ -106,7 +106,7 @@ public class HandoffSubsystem extends SubsystemBase {
   }
 
   public boolean isBeamBroken() {
-    return !beamBreak.get();
+    return beamBreak.get();
   }
 
   public void setReverse(boolean reverse) {
