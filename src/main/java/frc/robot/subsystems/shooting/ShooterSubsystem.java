@@ -11,6 +11,7 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.handoff.HandoffSubsystem;
 
@@ -26,6 +27,7 @@ public class ShooterSubsystem extends SubsystemBase {
     SPIN_UP,
     RAPID_FIRE,
     RAPID_FIRE_ACCURATE,
+    OVERIDE,
     PASSING,
     EMPTY
   }
@@ -59,6 +61,7 @@ public class ShooterSubsystem extends SubsystemBase {
   private final double overspinFactor = 1.07;
   private final double rpmRapidFireTolerance = 200;
   private final double rpmAccurateTolerance = 50;
+  private final double passingTolerance = 100; // tune
 
   private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // rps
 
@@ -74,6 +77,7 @@ public class ShooterSubsystem extends SubsystemBase {
   }
 
   private ShooterSubsystem() {
+    SmartDashboard.putNumber("Target RPM", 0.0);
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
@@ -120,7 +124,8 @@ public class ShooterSubsystem extends SubsystemBase {
   public void periodic() {
     double distance = getTargetDistance();
 
-    double baseRPM = shotFlywheelSpeedMap.get(distance);
+    //    double baseRPM = shotFlywheelSpeedMap.get(distance);
+    double baseRPM = SmartDashboard.getNumber("Target RPM", 0.0);
     double targetRPM = baseRPM * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
 
@@ -144,6 +149,7 @@ public class ShooterSubsystem extends SubsystemBase {
         double rampedRPS = spinUpRamp.calculate(targetRPS);
         shooterMotor.setControl(velocityRequest.withVelocity(rampedRPS).withSlot(0));
         break;
+      case OVERIDE:
       case RAPID_FIRE:
       case RAPID_FIRE_ACCURATE:
         // slot 1 if beam break or rpm error exceeds threshold
@@ -153,7 +159,7 @@ public class ShooterSubsystem extends SubsystemBase {
         shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(slot));
         break;
       case PASSING:
-        shooterMotor.setControl(voltageRequest.withOutput(12.0)); // full voltage for passing
+        shooterMotor.setControl(voltageRequest.withOutput(10.0)); // full voltage for passing
         break;
       case IDLE:
       case EMPTY:
@@ -183,14 +189,21 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public boolean isAtGoalSpeed() {
     double distance = getTargetDistance();
-    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+//    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    double targetRPM = SmartDashboard.getNumber("Target RPM", 0.0) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
-    return Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance;
+    if (state == ShooterState.RAPID_FIRE) {
+      return Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance;
+    } else if (state == ShooterState.PASSING) {
+      return Math.abs(currentRPM - targetRPM) <= passingTolerance;
+    }
+    return false;
   }
 
   public boolean isAtGoalSpeedAccurate() {
     double distance = getTargetDistance();
-    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+//    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    double targetRPM = SmartDashboard.getNumber("Target RPM", 0.0) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
     return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
   }

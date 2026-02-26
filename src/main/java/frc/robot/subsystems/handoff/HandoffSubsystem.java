@@ -57,11 +57,13 @@ public class HandoffSubsystem extends SubsystemBase {
 
     boolean shouldFeed = false;
     if (shooterState == ShooterState.PASSING) {
-      shouldFeed = true; // full voltage, always feed
+      shouldFeed = shooter.isAtGoalSpeed(); // full voltage, always feed
     } else if (shooterState == ShooterState.RAPID_FIRE) {
       shouldFeed = shooter.isAtGoalSpeed();
     } else if (shooterState == ShooterState.RAPID_FIRE_ACCURATE) {
       shouldFeed = shooter.isAtGoalSpeedAccurate();
+    } else if (shooterState == ShooterState.OVERIDE) {
+      shouldFeed = true;
     }
 
     if (!shouldFeed) {
@@ -120,6 +122,7 @@ public class HandoffSubsystem extends SubsystemBase {
       return "FEEDING";
     if (shooterState == ShooterState.RAPID_FIRE_ACCURATE
         && ShooterSubsystem.getInstance().isAtGoalSpeedAccurate()) return "FEEDING";
+    if (shooterState == ShooterState.OVERIDE) return "FEEDING";
     return "IDLE";
   }
 }

@@ -92,7 +92,6 @@ public class RobotContainer {
                 drive::addVisionMeasurement,
                 //                new VisionIOLimelight(camera0Name, drive::getRotation),
                 new VisionIOLimelight(camera1Name, drive::getRotation),
-                new VisionIOLimelight(camera1Name, drive::getRotation),
                 new VisionIOLimelight(camera2Name, drive::getRotation),
                 new VisionIOLimelight(camera3Name, drive::getRotation));
         turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
@@ -277,7 +276,9 @@ public class RobotContainer {
                   boolean r2Held = ps5Controller.R2().getAsBoolean();
                   boolean l2Held = ps5Controller.L2().getAsBoolean();
                   boolean override = r2Held && l2Held;
-                  boolean shiftActive = HubShiftUtil.getShiftedShiftInfo().active();
+                  boolean shiftActive =
+                      !edu.wpi.first.wpilibj.DriverStation.isFMSAttached()
+                          || HubShiftUtil.getShiftedShiftInfo().active();
                   boolean onTarget = turret.isOnTarget();
                   boolean passing = turret.isPassingMode();
                   boolean atSpeed = shooter.isAtGoalSpeed();
@@ -285,14 +286,12 @@ public class RobotContainer {
                   boolean looselyOnTarget = turret.isLooselyOnTarget();
                   boolean justSpinUp = turret.justSpinUp();
                   if (override) {
-                    shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
-                  } else if (!shiftActive) {
-                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
+                    shooter.setState(ShooterSubsystem.ShooterState.OVERIDE);
                   } else if (justSpinUp) {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                   } else if (passing && looselyOnTarget) {
                     shooter.setState(ShooterSubsystem.ShooterState.PASSING);
-                  } else if (onTarget && atSpeed && hoodReady) {
+                  } else if (onTarget && atSpeed && hoodReady && r2Held && shiftActive) {
                     shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
                   } else {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
