@@ -28,7 +28,7 @@ public class HubShiftUtil {
   private static final double minFuelCountDelay = 1.0;
   private static final double maxFuelCountDelay = 2.0;
   private static final double shiftEndFuelCountExtension = 3.0;
-  private static final double minTimeOfFlight = 3;
+  private static final double minTimeOfFlight = 1;
   // how long does it take a ball when closest
   private static final double maxTimeOfFlight = 3;
   // how long does it take a ball when farthest
