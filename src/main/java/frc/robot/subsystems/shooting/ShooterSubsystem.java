@@ -59,9 +59,9 @@ public class ShooterSubsystem extends SubsystemBase {
 
   // config
   private final double overspinFactor = 1.07;
-  private final double rpmRapidFireTolerance = 500;
+  private final double rpmRapidFireTolerance = 250;
   private final double rpmAccurateTolerance = 50;
-  private final double passingTolerance = 100; // tune
+  private final double passingTolerance = 500; // tune
 
   private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(20); // rps
 
