@@ -1,10 +1,13 @@
 package frc.robot.subsystems.intake;
 
-import com.revrobotics.RelativeEncoder;
-import com.revrobotics.spark.SparkBase.ControlType;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.controls.PositionDutyCycle;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.revrobotics.spark.SparkBase.PersistMode;
 import com.revrobotics.spark.SparkBase.ResetMode;
-import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
@@ -29,67 +32,88 @@ public class IntakeSubsystem extends SubsystemBase {
 
   private IntakeState state = IntakeState.STOWED;
 
-  private static final int DEPLOY_MOTOR_ID = 20;
-  private static final int ROLLER_MOTOR_ID = 21;
+  private static final int DEPLOY_MOTOR_ID = 31;
+  private static final int ROLLER_MOTOR_ID = 30;
 
   private static final double STOW_POSITION = 0.0;
-  private static final double DEPLOY_POSITION = 5.0; // tune
+  private static final double DEPLOY_POSITION = 4.6679983; // tune
 
   private static final double DEPLOY_P = 0.1;
-  private static final double DEPLOY_I = 0.0; // tune
-  private static final double DEPLOY_D = 0.0;
+  private static final double DEPLOY_I = 0.01; // tune
+  private static final double DEPLOY_D = 0.0; // tune — dampen oscillation
+  static final double kS = 0.00;
+  static final double kV = 0.104;
+  static final double kA = 0.001;
 
-  private static final double INTAKE_VOLTAGE = 8.0;
+  private static final double INTAKE_VOLTAGE = 6.0;
   private static final double EJECT_VOLTAGE = -6.0; // tune
 
-  private final SparkMax deployMotor = new SparkMax(DEPLOY_MOTOR_ID, MotorType.kBrushless);
+  private final TalonFX deployMotor = new TalonFX(DEPLOY_MOTOR_ID);
+  private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
+
   private final SparkMax rollerMotor = new SparkMax(ROLLER_MOTOR_ID, MotorType.kBrushless);
-  private final SparkClosedLoopController deployController;
-  private final RelativeEncoder deployEncoder;
 
   private IntakeSubsystem() {
-    SparkMaxConfig deployConfig = new SparkMaxConfig();
-    deployConfig
-        .idleMode(IdleMode.kBrake)
-        .smartCurrentLimit(30)
-        .inverted(false)
-        .closedLoop
-        .pid(DEPLOY_P, DEPLOY_I, DEPLOY_D)
-        .outputRange(-1.0, 1.0);
-    deployMotor.configure(
-        deployConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
+    var config = new TalonFXConfiguration();
+    config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+
+    // 70a burst for 1.5s drop to 35a sustained
+    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.CurrentLimits.SupplyCurrentLimit = 70.0;
+    config.CurrentLimits.SupplyCurrentLowerLimit = 40.0;
+    config.CurrentLimits.SupplyCurrentLowerTime = 1.5;
+    config.CurrentLimits.StatorCurrentLimit = 120.0;
+    config.CurrentLimits.StatorCurrentLimitEnable = true;
+
+    config.Slot0.kS = kS;
+    config.Slot0.kP = DEPLOY_P;
+    config.Slot0.kI = DEPLOY_I;
+    config.Slot0.kD = DEPLOY_D;
+
+    config.MotionMagic.MotionMagicCruiseVelocity = 90; // rps
+    config.MotionMagic.MotionMagicAcceleration = 7; // 7 rps^2
+
+    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = false;
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = DEPLOY_POSITION;
+    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = false;
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = 0.0; // 0 rotations
+
+    deployMotor.getConfigurator().apply(config);
 
     SparkMaxConfig rollerConfig = new SparkMaxConfig();
-    rollerConfig.idleMode(IdleMode.kCoast).smartCurrentLimit(30).inverted(false);
+    rollerConfig.idleMode(IdleMode.kCoast).smartCurrentLimit(35).inverted(false);
     rollerMotor.configure(
         rollerConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
-    deployController = deployMotor.getClosedLoopController();
-    deployEncoder = deployMotor.getEncoder();
-    deployEncoder.setPosition(0.0); // assume starting stowed
+    deployMotor.setPosition(0.0); // assume starting stowed
   }
 
   @Override
   public void periodic() {
     switch (state) {
       case STOWED:
-        deployController.setReference(STOW_POSITION, ControlType.kPosition);
+        deployMotor.setControl(new PositionDutyCycle(STOW_POSITION).withSlot(0));
         rollerMotor.setVoltage(0.0);
         break;
       case DEPLOYING:
-        deployController.setReference(DEPLOY_POSITION, ControlType.kPosition);
+        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
+        deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setVoltage(0.0);
         break;
       case INTAKING:
-        deployController.setReference(DEPLOY_POSITION, ControlType.kPosition);
+        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
+        deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setVoltage(INTAKE_VOLTAGE);
         break;
       case EJECTING:
-        deployController.setReference(DEPLOY_POSITION, ControlType.kPosition);
+        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
+        deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setVoltage(EJECT_VOLTAGE);
         break;
       case IDLE_DEPLOYED:
-        deployController.setReference(DEPLOY_POSITION, ControlType.kPosition);
+        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
+        deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setVoltage(0.0);
         break;
     }
@@ -104,7 +128,7 @@ public class IntakeSubsystem extends SubsystemBase {
   }
 
   public double getDeployPosition() {
-    return deployEncoder.getPosition();
+    return deployMotor.getPosition().getValueAsDouble();
   }
 
   public void stow() {

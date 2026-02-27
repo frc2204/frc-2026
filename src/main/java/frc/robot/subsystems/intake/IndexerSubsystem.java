@@ -24,16 +24,16 @@ public class IndexerSubsystem extends SubsystemBase {
 
   private IndexerState state = IndexerState.STOPPED;
 
-  private static final int INDEXER_MOTOR_ID = 23; // tune
+  private static final int INDEXER_MOTOR_ID = 40; // tune
 
-  private static final double FEED_VOLTAGE = 6.0; // tune
-  private static final double REVERSE_VOLTAGE = -4.0; // tune
+  private static final double FEED_VOLTAGE = -10.0; // tune
+  private static final double REVERSE_VOLTAGE = 4.0; // tune
 
   private final SparkMax indexerMotor = new SparkMax(INDEXER_MOTOR_ID, MotorType.kBrushless);
 
   private IndexerSubsystem() {
     SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kBrake).smartCurrentLimit(30).inverted(false);
+    config.idleMode(IdleMode.kCoast).smartCurrentLimit(30).inverted(false);
     indexerMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
   }
 
@@ -58,6 +58,12 @@ public class IndexerSubsystem extends SubsystemBase {
 
   public IndexerState getState() {
     return state;
+  }
+
+  /** Briefly pulse the motor to wake up the SparkMax controller. */
+  public void wakeUp() {
+    indexerMotor.setVoltage(0.01);
+    indexerMotor.setVoltage(0.0);
   }
 
   public void feed() {

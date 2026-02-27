@@ -14,8 +14,8 @@ import frc.robot.subsystems.shooting.TurretSubsystem;
 
 public class CANdleSubsystem extends SubsystemBase {
 
-  private static final int CANDLE_ID = 0; // tune
-  private static final int STRIP_LENGTH = 60; // tune —
+  private static final int CANDLE_ID = 10; // tune
+  private static final int STRIP_LENGTH = 300; // tune —
   private static final int LED_START = 8; // first external led cuz first 7 is the on candle ones
   private static final int LED_END = LED_START + STRIP_LENGTH - 1;
 
@@ -80,10 +80,10 @@ public class CANdleSubsystem extends SubsystemBase {
         candle.setControl(solidRequest.withColor(GREEN));
         break;
       case READY_TO_FIRE:
-        candle.setControl(strobeRequest.withColor(GREEN).withFrameRate(8));
+        candle.setControl(strobeRequest.withColor(GREEN).withFrameRate(1));
         break;
       case FIRING:
-        candle.setControl(strobeRequest.withColor(WHITE).withFrameRate(15));
+        candle.setControl(strobeRequest.withColor(WHITE).withFrameRate(1));
         break;
       case PASSING:
         candle.setControl(solidRequest.withColor(ORANGE));

@@ -11,6 +11,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
@@ -40,13 +41,14 @@ public class TurretSubsystem extends SubsystemBase {
 
   private Translation2d robotFieldVelocity;
 
-  private static final Translation2d robotToTurret = new Translation2d(-0.35, 0.10);
+  private static final Translation2d robotToTurret =
+      new Translation2d(Units.inchesToMeters(8.5), 0);
 
   private final TalonFX turretMotor = new TalonFX(20);
   private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
 
-  private static final double MAX_ANGLE = 75;
-  private static final double MIN_ANGLE = -75;
+  private static final double MAX_ANGLE = 90;
+  private static final double MIN_ANGLE = -90;
   private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
@@ -65,8 +67,26 @@ public class TurretSubsystem extends SubsystemBase {
       new InterpolatingDoubleTreeMap();
 
   static {
-    // this is example later replace
-    ballFlightTimeMap.put(2.0, 0.42); // distance in meters, time in seconds
+    // placeholder arc-style flight times — measure and replace
+    // Original values commented out:
+    // ballFlightTimeMap.put(Units.inchesToMeters(74.5 + 27.0 / 2.0 + 23.25), 1.0);
+    // ballFlightTimeMap.put(Units.inchesToMeters(84.5 + 27.0 / 2.0 + 23.25), 1.0);
+    // ballFlightTimeMap.put(Units.inchesToMeters(94.5 + 27.0 / 2.0 + 23.25), 1.1);
+    // ballFlightTimeMap.put(Units.inchesToMeters(104.5 + 27.0 / 2.0 + 23.25), 1.1);
+    // ballFlightTimeMap.put(Units.inchesToMeters(114.5 + 27.0 / 2.0 + 23.25), 1.2);
+    // ballFlightTimeMap.put(Units.inchesToMeters(124.5 + 27.0 / 2.0 + 23.25), 1.2);
+    // ballFlightTimeMap.put(Units.inchesToMeters(134.5 + 27.0 / 2.0 + 23.25), 1.2);
+    // ballFlightTimeMap.put(Units.inchesToMeters(144.5 + 27.0 / 2.0 + 23.25), 1.3);
+    // ballFlightTimeMap.put(Units.inchesToMeters(166.5 + 27.0 / 2.0 + 23.25), 1.3);
+    ballFlightTimeMap.put(2.5, 0.30); // distance (m) -> flight time (s)
+    ballFlightTimeMap.put(2.8, 0.35);
+    ballFlightTimeMap.put(3.1, 0.40);
+    ballFlightTimeMap.put(3.4, 0.45);
+    ballFlightTimeMap.put(3.7, 0.50);
+    ballFlightTimeMap.put(4.0, 0.55);
+    ballFlightTimeMap.put(4.3, 0.60);
+    ballFlightTimeMap.put(4.6, 0.65);
+    ballFlightTimeMap.put(5.3, 0.75);
   }
 
   public TurretSubsystem(
@@ -103,7 +123,7 @@ public class TurretSubsystem extends SubsystemBase {
     config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = MIN_ANGLE / 360.0; // -2.0 rotations
 
     turretMotor.getConfigurator().apply(config);
-    turretMotor.setPosition(75.0 / 360.0);
+    turretMotor.setPosition(0 / 360.0);
   }
 
   @Override
@@ -212,17 +232,7 @@ public class TurretSubsystem extends SubsystemBase {
 
   public double applyAngularLead(
       double turretAngleRad, double robotOmegaRadPerSec, Pose2d robotPose) {
-    double totalTime;
-    if (isVisionTrustworthy(
-        limelightTable.getEntry("tx").getDouble(0.0),
-        Math.toRadians(getVelocityDegPerSec()),
-        robotOmegaRadPerSec,
-        getDistanceFromHub(robotPose),
-        limelightTable.getEntry("tid").getDouble(0))) {
-      totalTime = VISION_LATENCY + ballFlightTimeMap.get(getDistanceFromHub(robotPose));
-    } else {
-      totalTime = ballFlightTimeMap.get(getDistanceFromHub(robotPose));
-    }
+    double totalTime = ballFlightTimeMap.get(getDistanceFromHub(robotPose));
     return turretAngleRad - robotOmegaRadPerSec * totalTime;
   }
 
@@ -252,7 +262,7 @@ public class TurretSubsystem extends SubsystemBase {
 
     double lead = Math.atan2(lateralVelocity * ballFlightTimeMap.get(distance), distance);
 
-    return turretAngleRad + lead;
+    return turretAngleRad - lead;
   }
 
   public double applyVisionCorrection(
@@ -309,7 +319,7 @@ public class TurretSubsystem extends SubsystemBase {
       // getting stuck
     }
 
-    if (positionError < 8.0) {
+    if (positionError < 15.0) {
       lastTimeAtGoal = Timer.getFPGATimestamp();
       wrappingAround = false;
       return true;
@@ -335,9 +345,7 @@ public class TurretSubsystem extends SubsystemBase {
     if (AllianceFlipUtil.shouldFlip()) {
       if (robotPose.getX() > FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB)
         return false;
-    } else {
-      if (robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB) return false;
-    }
+    } else return !(robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB);
     return true;
   }
 

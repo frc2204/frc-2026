@@ -3,6 +3,7 @@ package frc.robot.subsystems.objectdetection;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.LimelightHelpers;
@@ -25,22 +26,22 @@ public class ObjectDetection extends SubsystemBase {
 
   // Camera config
   private static final String CAMERA_NAME = "limelight-detect";
-  private static final int FUEL_CLASS_ID = 3; // "Fuels" class from Roboflow model
-  private static final double CAMERA_HEIGHT_METERS = 0.5461;
+  private static final int FUEL_CLASS_ID = 0; // "Fuels" class from Roboflow model
+  private static final double CAMERA_HEIGHT_METERS = Units.inchesToMeters(28);
   private static final double TARGET_HEIGHT_METERS = 0.05715; // ball center on ground
-  private static final double CAMERA_PITCH_DEGREES = -35.0;
+  private static final double CAMERA_PITCH_DEGREES = -20.0;
   private static final Translation2d CAMERA_OFFSET_ROBOT = new Translation2d(0.0127, -0.1143);
   private static final double CAMERA_YAW_DEGREES = 0.0; // camera faces forward on robot
 
   // Detection filters
-  private static final double MIN_TARGET_AREA = 0.1;
-  private static final double MAX_DETECTION_DISTANCE = 6.0;
-  private static final double MIN_DETECTION_DISTANCE = 0.15;
+  private static final double MIN_TARGET_AREA = 0.01;
+  private static final double MAX_DETECTION_DISTANCE = 600.0;
+  private static final double MIN_DETECTION_DISTANCE = 0.00015;
   private static final double FIELD_BOUNDARY_MARGIN = 0.3;
 
   // Tracking parameters
-  private static final double DEDUP_DISTANCE_METERS = 0.6; // 0.3
-  private static final double EXPIRY_SECONDS = 0.5; // 2
+  private static final double DEDUP_DISTANCE_METERS = 0.3;
+  private static final double EXPIRY_SECONDS = 2.0;
   private static final double PICKUP_RADIUS_METERS = 0.5;
   private static final double SMOOTHING_ALPHA = 0.7;
 
@@ -159,6 +160,7 @@ public class ObjectDetection extends SubsystemBase {
 
       for (TrackedFuel tracked : trackedFuels) {
         double dist = tracked.fieldPosition.getDistance(newDet);
+        System.out.println(Units.metersToInches(dist));
         if (dist < closestDist) {
           closestDist = dist;
           closest = tracked;

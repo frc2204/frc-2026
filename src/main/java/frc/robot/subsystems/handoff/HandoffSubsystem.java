@@ -9,6 +9,7 @@ import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.subsystems.intake.IndexerSubsystem;
 import frc.robot.subsystems.shooting.ShooterSubsystem;
 import frc.robot.subsystems.shooting.ShooterSubsystem.ShooterState;
 
@@ -20,11 +21,11 @@ public class HandoffSubsystem extends SubsystemBase {
     return INSTANCE;
   }
 
-  private static final int HANDOFF_MOTOR_ID = 22;
+  private static final int HANDOFF_MOTOR_ID = 41;
   private static final int BEAM_BREAK_DIO = 0;
 
-  private static final double FEED_VOLTAGE = 8.0; // tune
-  private static final double REVERSE_VOLTAGE = -4.0; // tune
+  private static final double FEED_VOLTAGE = -8.0; // tune
+  private static final double REVERSE_VOLTAGE = 4.0; // tune
 
   // if beam break is blocked for this long reverse
   private static final double JAM_TIME_SECONDS = 0.5; // tune
@@ -40,12 +41,20 @@ public class HandoffSubsystem extends SubsystemBase {
 
   private HandoffSubsystem() {
     SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kBrake).smartCurrentLimit(30).inverted(false);
+    config.idleMode(IdleMode.kCoast).smartCurrentLimit(30).inverted(false);
     handoffMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
   }
 
   @Override
   public void periodic() {
+    ShooterSubsystem.ShooterState st = ShooterSubsystem.getInstance().getState();
+    System.out.println(
+        "handoff: beamBroken="
+            + isBeamBroken()
+            + " shooterState="
+            + st
+            + " unjamming="
+            + unjamming);
     if (forceReverse) {
       handoffMotor.setVoltage(REVERSE_VOLTAGE);
       resetJamState();
@@ -57,17 +66,26 @@ public class HandoffSubsystem extends SubsystemBase {
 
     boolean shouldFeed = false;
     if (shooterState == ShooterState.PASSING) {
-      shouldFeed = shooter.isAtGoalSpeed(); // full voltage, always feed
-    } else if (shooterState == ShooterState.RAPID_FIRE) {
+      shouldFeed = ShooterSubsystem.getInstance().isAtGoalSpeed(); // full voltage, feed
+    }
+    //    shooterState == ShooterState.PASSING ||
+    //    if (shooterState == ShooterState.OVERRIDE) {
+    //      shouldFeed = shooter.isAtGoalSpeed(); // full voltage, always feed
+    //    } else
+    if (shooterState == ShooterState.RAPID_FIRE) {
       shouldFeed = shooter.isAtGoalSpeed();
     } else if (shooterState == ShooterState.RAPID_FIRE_ACCURATE) {
       shouldFeed = shooter.isAtGoalSpeedAccurate();
-    } else if (shooterState == ShooterState.OVERIDE) {
+    } else if (shooterState == ShooterState.OVERRIDE) {
       shouldFeed = true;
+    }
+    if (shouldFeed) {
+      IndexerSubsystem.getInstance().feed();
     }
 
     if (!shouldFeed) {
       handoffMotor.setVoltage(0.0);
+      IndexerSubsystem.getInstance().stop();
       resetJamState();
       return;
     }
@@ -76,6 +94,7 @@ public class HandoffSubsystem extends SubsystemBase {
 
     if (unjamming) {
       handoffMotor.setVoltage(REVERSE_VOLTAGE);
+      IndexerSubsystem.getInstance().reverse();
       if (now - unjamStartTime >= UNJAM_TIME_SECONDS) {
         unjamming = false;
         blockedStartTime = -1.0;
@@ -106,7 +125,7 @@ public class HandoffSubsystem extends SubsystemBase {
   }
 
   public boolean isBeamBroken() {
-    return beamBreak.get();
+    return !beamBreak.get();
   }
 
   public void setReverse(boolean reverse) {
@@ -122,7 +141,7 @@ public class HandoffSubsystem extends SubsystemBase {
       return "FEEDING";
     if (shooterState == ShooterState.RAPID_FIRE_ACCURATE
         && ShooterSubsystem.getInstance().isAtGoalSpeedAccurate()) return "FEEDING";
-    if (shooterState == ShooterState.OVERIDE) return "FEEDING";
+    if (shooterState == ShooterState.OVERRIDE) return "FEEDING";
     return "IDLE";
   }
 }

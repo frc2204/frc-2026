@@ -127,6 +127,7 @@ public class Robot extends LoggedRobot {
     // this line or comment it out.
     LimelightHelpers.SetIMUMode("limelight-four", 4);
     frc.robot.util.HubShiftUtil.initialize();
+    robotContainer.resetPoseForAlliance();
 
     ShooterSubsystem.getInstance().onEnable();
     if (autonomousCommand != null) {

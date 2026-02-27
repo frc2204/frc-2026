@@ -134,7 +134,8 @@ public class RobotContainer {
     objectDetection = new ObjectDetection(drive::getPose);
 
     leds = new frc.robot.subsystems.leds.CANdleSubsystem(turret);
-    driverView = new frc.robot.util.DriverViewSelector(drive::getPose, turret::getAbsolutePositionDeg);
+    driverView =
+        new frc.robot.util.DriverViewSelector(drive::getPose, turret::getAbsolutePositionDeg);
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -287,14 +288,29 @@ public class RobotContainer {
                   boolean hoodReady = hood.atTarget();
                   boolean looselyOnTarget = turret.isLooselyOnTarget();
                   boolean justSpinUp = turret.justSpinUp();
+                  System.out.println(
+                      "onTarget="
+                          + onTarget
+                          + " atSpeed="
+                          + atSpeed
+                          + " hoodReady="
+                          + hoodReady
+                          + " passing="
+                          + passing
+                          + " justSpinUp="
+                          + justSpinUp
+                          + " shiftActive="
+                          + shiftActive);
                   if (override) {
-                    shooter.setState(ShooterSubsystem.ShooterState.OVERIDE);
+                    shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE);
+                    //                    indexer.feed();
                   } else if (justSpinUp) {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                   } else if (passing && looselyOnTarget) {
                     shooter.setState(ShooterSubsystem.ShooterState.PASSING);
                   } else if (onTarget && atSpeed && hoodReady && r2Held && shiftActive) {
                     shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
+                    //                    indexer.feed();
                   } else {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                   }
@@ -302,7 +318,12 @@ public class RobotContainer {
                 shooter))
         .onFalse(
             Commands.runOnce(
-                () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+                () -> {
+                  shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
+                  //                    indexer.stop();
+                },
+                shooter,
+                indexer));
 
     // L1: press to intake + feed indexer
     ps5Controller
@@ -312,7 +333,7 @@ public class RobotContainer {
             Commands.runOnce(
                 () -> {
                   intake.intake();
-                  indexer.feed();
+                  //                  indexer.feed();
                 },
                 intake,
                 indexer));
@@ -325,7 +346,7 @@ public class RobotContainer {
             Commands.runOnce(
                 () -> {
                   intake.stow();
-                  indexer.stop();
+                  //                  indexer.stop();
                 },
                 intake,
                 indexer));
@@ -351,10 +372,10 @@ public class RobotContainer {
                 handoff,
                 indexer));
 
-//    // D-pad up: chase nearest detected ball
-//    ps5Controller
-//        .povUp()
-//        .whileTrue(new ChaseBallCommand(drive, objectDetection, intake));
+    //    // D-pad up: chase nearest detected ball
+    //    ps5Controller
+    //        .povUp()
+    //        .whileTrue(new ChaseBallCommand(drive, objectDetection, intake));
 
     // Shift change rumble alerts — 0.5s pulse at 10s and 5s remaining
     Trigger tenSecWarning =
@@ -439,6 +460,25 @@ public class RobotContainer {
 
     // Driver camera view
     driverView.update();
+  }
+
+  /** Resets the pose to the alliance zone if no auto was run (pose is still near origin). */
+  public void resetPoseForAlliance() {
+    Pose2d currentPose = drive.getPose();
+    // Only reset if pose is still near the default (0,0) — meaning no auto ran
+    if (currentPose.getTranslation().getNorm() < 1.0) {
+      Pose2d startingPose;
+      if (AllianceFlipUtil.shouldFlip()) {
+        // Red alliance: place robot in red zone facing blue wall
+        startingPose =
+            new Pose2d(
+                FieldConstants.FIELDLENGTH - 1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kPi);
+      } else {
+        // Blue alliance: place robot in blue zone facing red wall
+        startingPose = new Pose2d(1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kZero);
+      }
+      drive.setPose(startingPose);
+    }
   }
 
   // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far
