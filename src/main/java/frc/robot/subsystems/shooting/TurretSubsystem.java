@@ -42,7 +42,7 @@ public class TurretSubsystem extends SubsystemBase {
   private Translation2d robotFieldVelocity;
 
   private static final Translation2d robotToTurret =
-      new Translation2d(Units.inchesToMeters(8.5), 0);
+      new Translation2d(Units.inchesToMeters(-8.5), 0);
 
   private final TalonFX turretMotor = new TalonFX(20);
   private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);

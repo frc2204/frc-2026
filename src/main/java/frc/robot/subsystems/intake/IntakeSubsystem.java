@@ -38,9 +38,15 @@ public class IntakeSubsystem extends SubsystemBase {
   private static final double STOW_POSITION = 0.0;
   private static final double DEPLOY_POSITION = 4.6679983; // tune
 
+  // Slot 0 — deploy (down)
   private static final double DEPLOY_P = 0.1;
   private static final double DEPLOY_I = 0.01; // tune
-  private static final double DEPLOY_D = 0.0; // tune — dampen oscillation
+  private static final double DEPLOY_D = 0.0; // tune
+  // Slot 1 — stow (up)
+  private static final double STOW_P = 0.2; // tune
+  private static final double STOW_I = 0.01; // tune
+  private static final double STOW_D = 0.0; // tune
+
   static final double kS = 0.00;
   static final double kV = 0.104;
   static final double kA = 0.001;
@@ -71,6 +77,11 @@ public class IntakeSubsystem extends SubsystemBase {
     config.Slot0.kI = DEPLOY_I;
     config.Slot0.kD = DEPLOY_D;
 
+    config.Slot1.kS = kS;
+    config.Slot1.kP = STOW_P;
+    config.Slot1.kI = STOW_I;
+    config.Slot1.kD = STOW_D;
+
     config.MotionMagic.MotionMagicCruiseVelocity = 90; // rps
     config.MotionMagic.MotionMagicAcceleration = 7; // 7 rps^2
 
@@ -93,7 +104,7 @@ public class IntakeSubsystem extends SubsystemBase {
   public void periodic() {
     switch (state) {
       case STOWED:
-        deployMotor.setControl(new PositionDutyCycle(STOW_POSITION).withSlot(0));
+        deployMotor.setControl(new PositionDutyCycle(STOW_POSITION).withSlot(1));
         rollerMotor.setVoltage(0.0);
         break;
       case DEPLOYING:

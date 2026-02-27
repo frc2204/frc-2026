@@ -26,14 +26,14 @@ public class IndexerSubsystem extends SubsystemBase {
 
   private static final int INDEXER_MOTOR_ID = 40; // tune
 
-  private static final double FEED_VOLTAGE = -10.0; // tune
+  private static final double FEED_VOLTAGE = -12.0; // tune
   private static final double REVERSE_VOLTAGE = 4.0; // tune
 
   private final SparkMax indexerMotor = new SparkMax(INDEXER_MOTOR_ID, MotorType.kBrushless);
 
   private IndexerSubsystem() {
     SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kCoast).smartCurrentLimit(30).inverted(false);
+    config.idleMode(IdleMode.kCoast).smartCurrentLimit(35).inverted(false);
     indexerMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
   }
 
