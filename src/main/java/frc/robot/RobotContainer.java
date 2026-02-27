@@ -137,6 +137,25 @@ public class RobotContainer {
     driverView =
         new frc.robot.util.DriverViewSelector(drive::getPose, turret::getAbsolutePositionDeg);
 
+    // Register named commands for PathPlanner
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "deployIntake", Commands.runOnce(() -> intake.intake(), intake));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "stowIntake", Commands.runOnce(() -> intake.stow(), intake));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "spinUpShooter",
+        Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "idleShooter",
+        Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "overrideShooter",
+        Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE), shooter));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "rapidFireShooter",
+        Commands.runOnce(
+            () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE), shooter));
+
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
 
