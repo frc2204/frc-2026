@@ -42,11 +42,12 @@ public class ShooterSubsystem extends SubsystemBase {
   static final double kD_STEADY = 0.0;
 
   // getting back to speed after shot
-  static final double kP_RECOVERY = 0.4; // tune — aggressive
+  static final double kP_RECOVERY = 0.4; // tune — aggressive TODO: TUNE
   static final double kD_RECOVERY = 0.01; // tune — dampen overshoot
 
   // rpm error to switch slots
-  static final double RECOVERY_THRESHOLD_RPS = 100.0 / 60.0; // low since flywheel drop is small
+  static final double RECOVERY_THRESHOLD_RPS =
+      100.0 / 60.0; // low since flywheel drop is small TODO: tune
 
   // delay from handoff beam break
   private static final double BEAM_BREAK_DELAY_SECONDS = 0.15; // tune: travel time to flywheel
