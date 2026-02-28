@@ -97,6 +97,7 @@ public class Robot extends LoggedRobot {
   public void disabledInit() {
     LimelightHelpers.SetIMUMode("limelight-four", 1);
     HoodSubsystem.getInstance().setPosition(0.0);
+    robotContainer.getTurret().zeroPosition();
     //    TurretSubsystem.
   }
 
@@ -108,6 +109,7 @@ public class Robot extends LoggedRobot {
   @Override
   public void autonomousInit() {
     LimelightHelpers.SetIMUMode("limelight-four", 4);
+    robotContainer.getTurret().zeroPosition();
     ShooterSubsystem.getInstance().onEnable();
     autonomousCommand = robotContainer.getAutonomousCommand();
 
@@ -131,7 +133,6 @@ public class Robot extends LoggedRobot {
     LimelightHelpers.SetIMUMode("limelight-four", 4);
     frc.robot.util.HubShiftUtil.initialize();
     robotContainer.resetPoseForAlliance();
-
     ShooterSubsystem.getInstance().onEnable();
     if (autonomousCommand != null) {
       autonomousCommand.cancel();
