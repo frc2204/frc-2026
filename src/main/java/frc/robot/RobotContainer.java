@@ -253,7 +253,7 @@ public class RobotContainer {
                 () -> -ps5Controller.getLeftX(),
                 () -> -ps5Controller.getRightX()));
 
-    double slowFactor = 0.25; // tune
+    double slowFactor = 0.60; // tune
     ps5Controller
         .cross()
         .whileTrue(
@@ -498,6 +498,10 @@ public class RobotContainer {
       }
       drive.setPose(startingPose);
     }
+  }
+
+  public TurretSubsystem getTurret() {
+    return turret;
   }
 
   // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far
