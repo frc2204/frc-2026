@@ -15,6 +15,7 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.LimelightHelpers;
 import frc.robot.util.FieldConstants;
@@ -54,6 +55,13 @@ public class TurretSubsystem extends SubsystemBase {
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
   private static final double UNWIND_THRESHOLD = 500;
   private static final double GEAR_RATIO = 50.0;
+
+  // turret PID — tunable via SmartDashboard under "Turret/PID/..."
+  private static double turretKP = 60.0;
+  private static double turretKD = 0.63;
+  private static double turretKS = 0.2;
+  private static double turretKV = 0.754;
+  private static double turretKA = 0.126;
 
   private Rotation2d targetAngle;
   private boolean isUnwinding;
@@ -98,6 +106,12 @@ public class TurretSubsystem extends SubsystemBase {
     this.targetAngle = new Rotation2d();
     this.isUnwinding = false;
 
+    SmartDashboard.putNumber("Turret/PID/kP", turretKP);
+    SmartDashboard.putNumber("Turret/PID/kD", turretKD);
+    SmartDashboard.putNumber("Turret/PID/kS", turretKS);
+    SmartDashboard.putNumber("Turret/PID/kV", turretKV);
+    SmartDashboard.putNumber("Turret/PID/kA", turretKA);
+
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
@@ -110,12 +124,12 @@ public class TurretSubsystem extends SubsystemBase {
     config.MotionMagic.MotionMagicAcceleration =
         MAX_ACCELERATION_IN_DEG_PER_SEC / 360.0; // 2.78 rps^2
 
-    config.Slot0.kP = 60.0; // lower by a lot maybe
+    config.Slot0.kP = turretKP; // 60
     config.Slot0.kI = 0.0;
-    config.Slot0.kD = 0.63;
-    config.Slot0.kS = 0.2;
-    config.Slot0.kV = 0.754;
-    config.Slot0.kA = 0.126;
+    config.Slot0.kD = turretKD; // 0.63
+    config.Slot0.kS = turretKS; // 0.2
+    config.Slot0.kV = turretKV; // 0.754
+    config.Slot0.kA = turretKA; // 0.126
 
     config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
     config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = MAX_ANGLE / 360.0; // 2.0 rotations
@@ -126,8 +140,14 @@ public class TurretSubsystem extends SubsystemBase {
     turretMotor.setPosition(0 / 360.0);
   }
 
+  public void zeroPosition() {
+    turretMotor.setControl(motionMagicRequest.withPosition(0.0));
+  }
+
   @Override
   public void periodic() {
+    updatePIDFromDashboard();
+
     // Set limelight priority ID once alliance is known
     if (!priorityIdSet && edu.wpi.first.wpilibj.DriverStation.getAlliance().isPresent()) {
       if (AllianceFlipUtil.shouldFlip()) {
@@ -163,7 +183,7 @@ public class TurretSubsystem extends SubsystemBase {
     double distanceToHub = getDistanceFromHub(robotPose);
     ShooterSubsystem.getInstance().setTargetDistance(distanceToHub);
     HoodSubsystem.getInstance().setTargetDistance(distanceToHub);
-//    System.out.println(Units.metersToInches(distanceToHub));
+    //    System.out.println(Units.metersToInches(distanceToHub));
     HoodSubsystem.getInstance().setRobotPosex(robotPose.getX());
 
     updateTargetPose();
@@ -367,9 +387,12 @@ public class TurretSubsystem extends SubsystemBase {
     return false;
   }
 
+  // ── LEAD MODE SWITCH ────────────────────────────────────────────────────
+  // To swap: comment out one calculateTurretgoalRad, uncomment the other.
+
+  // ── OPTION A: Original angular + translational lead — ACTIVE ──
   public double calculateTurretgoalRad(
       Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
-    // base turret angle robot relative poointing towards hub
     Translation2d turretPose =
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
     Translation2d toTargetPose = targetPose.minus(turretPose);
@@ -405,6 +428,59 @@ public class TurretSubsystem extends SubsystemBase {
     return angle;
   }
 
+  // ── OPTION B: Iterative convergence lead — INACTIVE ──
+  // private static final int LEAD_ITERATIONS = 3;
+  //
+  // public double calculateTurretgoalRad(
+  //     Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
+  //   // predict where robot will be when ball arrives, aim from there, repeat
+  //   double t = 0.0;
+  //
+  //   for (int i = 0; i < LEAD_ITERATIONS; i++) {
+  //     double futureX = robotPose.getX() + robotVelocity.getX() * t;
+  //     double futureY = robotPose.getY() + robotVelocity.getY() * t;
+  //     double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
+  //     Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
+  //
+  //     Translation2d futureTurretPose =
+  //         new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
+  //     double distance = targetPose.minus(futureTurretPose).getNorm();
+  //     t = ballFlightTimeMap.get(Math.max(distance, 2.5));
+  //   }
+  //
+  //   double futureX = robotPose.getX() + robotVelocity.getX() * t;
+  //   double futureY = robotPose.getY() + robotVelocity.getY() * t;
+  //   double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
+  //   Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
+  //
+  //   Translation2d futureTurretPose =
+  //       new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
+  //   Translation2d toTarget = targetPose.minus(futureTurretPose);
+  //   double fieldAngle = Math.atan2(toTarget.getY(), toTarget.getX());
+  //
+  //   // robot-relative using CURRENT heading (turret is on the current robot)
+  //   double angle =
+  //       MathUtil.angleModulus(
+  //           fieldAngle - robotPose.getRotation().getRadians() - TURRET_FORWARD_OFFSET_RAD);
+  //
+  //   if (isVisionTrustworthy(
+  //       limelightTable.getEntry("tx").getDouble(0.0),
+  //       Math.toRadians(getVelocityDegPerSec()),
+  //       robotOmega,
+  //       getDistanceFromHub(robotPose),
+  //       limelightTable.getEntry("tid").getDouble(0))) {
+  //     angle =
+  //         applyVisionCorrection(
+  //             angle,
+  //             limelightTable.getEntry("tx").getDouble(0.0),
+  //             Math.toRadians(getVelocityDegPerSec()));
+  //   }
+  //
+  //   angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
+  //   return angle;
+  // }
+  // ── END LEAD MODE SWITCH ──────────────────────────────────────────────
+
   // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past
   // mid
   public void updateTargetPose() {
@@ -431,5 +507,50 @@ public class TurretSubsystem extends SubsystemBase {
     } else {
       targetPose = hubPos;
     }
+  }
+
+  private void updatePIDFromDashboard() {
+    double newKP = SmartDashboard.getNumber("Turret/PID/kP", turretKP);
+    double newKD = SmartDashboard.getNumber("Turret/PID/kD", turretKD);
+    double newKS = SmartDashboard.getNumber("Turret/PID/kS", turretKS);
+    double newKV = SmartDashboard.getNumber("Turret/PID/kV", turretKV);
+    double newKA = SmartDashboard.getNumber("Turret/PID/kA", turretKA);
+
+    boolean changed =
+        newKP != turretKP
+            || newKD != turretKD
+            || newKS != turretKS
+            || newKV != turretKV
+            || newKA != turretKA;
+
+    if (!changed) return;
+
+    turretKP = newKP;
+    turretKD = newKD;
+    turretKS = newKS;
+    turretKV = newKV;
+    turretKA = newKA;
+
+    var config = new TalonFXConfiguration();
+    config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+    config.CurrentLimits.SupplyCurrentLimit = 40.0;
+    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.Feedback.SensorToMechanismRatio = GEAR_RATIO;
+    config.MotionMagic.MotionMagicCruiseVelocity = MAX_VELOCITY_IN_DEG_PER_SEC / 360.0;
+    config.MotionMagic.MotionMagicAcceleration = MAX_ACCELERATION_IN_DEG_PER_SEC / 360.0;
+    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = MAX_ANGLE / 360.0;
+    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = MIN_ANGLE / 360.0;
+
+    config.Slot0.kP = turretKP;
+    config.Slot0.kI = 0.0;
+    config.Slot0.kD = turretKD;
+    config.Slot0.kS = turretKS;
+    config.Slot0.kV = turretKV;
+    config.Slot0.kA = turretKA;
+
+    turretMotor.getConfigurator().apply(config);
   }
 }
