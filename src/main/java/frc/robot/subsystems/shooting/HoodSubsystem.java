@@ -94,7 +94,7 @@ public class HoodSubsystem extends SubsystemBase {
               0.0)); // lolwer hood when  approaching trench TODO: make it only go down when
       // robottoturret, not just robot pose, and tune
     } else if (AllianceFlipUtil.applyX(robotPoseX) > 5.500) {
-      hoodMotor.setControl(positionRequest.withPosition(FORWARD_SOFT_LIMIT));
+      hoodMotor.setControl(positionRequest.withPosition(FORWARD_SOFT_LIMIT - 0.05)); // give it a little buffer so it doesn't hit the soft stop
     } else {
       hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
     }
