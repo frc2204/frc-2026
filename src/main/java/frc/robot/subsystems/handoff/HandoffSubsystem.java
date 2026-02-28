@@ -48,13 +48,13 @@ public class HandoffSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     ShooterSubsystem.ShooterState st = ShooterSubsystem.getInstance().getState();
-    System.out.println(
-        "handoff: beamBroken="
-            + isBeamBroken()
-            + " shooterState="
-            + st
-            + " unjamming="
-            + unjamming);
+    //    System.out.println(
+    //        "handoff: beamBroken="
+    //            + isBeamBroken()
+    //            + " shooterState="
+    //            + st
+    //            + " unjamming="
+    //            + unjamming);
     if (forceReverse) {
       handoffMotor.setVoltage(REVERSE_VOLTAGE);
       resetJamState();

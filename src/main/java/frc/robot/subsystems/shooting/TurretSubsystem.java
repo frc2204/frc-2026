@@ -53,7 +53,7 @@ public class TurretSubsystem extends SubsystemBase {
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
   private static final double UNWIND_THRESHOLD = 500;
-  private static final double GEAR_RATIO = 60.8;
+  private static final double GEAR_RATIO = 50.0;
 
   private Rotation2d targetAngle;
   private boolean isUnwinding;
@@ -78,15 +78,15 @@ public class TurretSubsystem extends SubsystemBase {
     // ballFlightTimeMap.put(Units.inchesToMeters(134.5 + 27.0 / 2.0 + 23.25), 1.2);
     // ballFlightTimeMap.put(Units.inchesToMeters(144.5 + 27.0 / 2.0 + 23.25), 1.3);
     // ballFlightTimeMap.put(Units.inchesToMeters(166.5 + 27.0 / 2.0 + 23.25), 1.3);
-    ballFlightTimeMap.put(2.5, 0.30); // distance (m) -> flight time (s)
-    ballFlightTimeMap.put(2.8, 0.35);
-    ballFlightTimeMap.put(3.1, 0.40);
-    ballFlightTimeMap.put(3.4, 0.45);
-    ballFlightTimeMap.put(3.7, 0.50);
-    ballFlightTimeMap.put(4.0, 0.55);
-    ballFlightTimeMap.put(4.3, 0.60);
-    ballFlightTimeMap.put(4.6, 0.65);
-    ballFlightTimeMap.put(5.3, 0.75);
+    ballFlightTimeMap.put(2.5, 0.30 * 2); // distance (m) -> flight time (s)
+    ballFlightTimeMap.put(2.8, 0.35 * 2);
+    ballFlightTimeMap.put(3.1, 0.40 * 2);
+    ballFlightTimeMap.put(3.4, 0.45 * 2);
+    ballFlightTimeMap.put(3.7, 0.50 * 2);
+    ballFlightTimeMap.put(4.0, 0.55 * 2);
+    ballFlightTimeMap.put(4.3, 0.60 * 2);
+    ballFlightTimeMap.put(4.6, 0.65 * 2);
+    ballFlightTimeMap.put(5.3, 0.75 * 2);
   }
 
   public TurretSubsystem(
@@ -163,6 +163,8 @@ public class TurretSubsystem extends SubsystemBase {
     double distanceToHub = getDistanceFromHub(robotPose);
     ShooterSubsystem.getInstance().setTargetDistance(distanceToHub);
     HoodSubsystem.getInstance().setTargetDistance(distanceToHub);
+//    System.out.println(Units.metersToInches(distanceToHub));
+    HoodSubsystem.getInstance().setRobotPosex(robotPose.getX());
 
     updateTargetPose();
     double goalRad =

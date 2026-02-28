@@ -8,7 +8,9 @@ import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.util.Units;
+// import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.util.geometry.AllianceFlipUtil;
 
 public class HoodSubsystem extends SubsystemBase {
 
@@ -24,7 +26,7 @@ public class HoodSubsystem extends SubsystemBase {
   private static final double FORWARD_SOFT_LIMIT = 1.75; // tunemax hood angle
   private static final double REVERSE_SOFT_LIMIT = 0.0; // tune min hood angle
 
-  private static final double kP = 15.0; // tune
+  private static final double kP = 10.0; // tune
   private static final double kI = 0.0;
   private static final double kD = 0.5; // tune
   private static final double kG = 0.3; // tune gravity
@@ -35,18 +37,21 @@ public class HoodSubsystem extends SubsystemBase {
 
   private static final InterpolatingDoubleTreeMap hoodAngleMap = new InterpolatingDoubleTreeMap();
 
+  private double robotPoseX = 0;
+
   static {
     // distance in meters and   hood position in rotations
-    hoodAngleMap.put(
-        Units.inchesToMeters(74.5 + 27 / 2 + 23.25), 0.0); // distance in meters, time in seconds
-    hoodAngleMap.put(Units.inchesToMeters(84.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(94.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(104.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(114.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(124.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(134.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(144.5 + 27 / 2 + 23.25), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(166.5 + 27 / 2 + 23.25), 60.0);
+    hoodAngleMap.put(Units.inchesToMeters(30.0 + 27 / 2 + 23.25 + 3.5), 0.0);
+    hoodAngleMap.put(Units.inchesToMeters(40.0 + 27 / 2 + 23.25 + 3.5), 0.0);
+    hoodAngleMap.put(Units.inchesToMeters(50.0 + 27 / 2 + 23.25 + 3.5), 0.0);
+    hoodAngleMap.put(Units.inchesToMeters(60.0 + 27 / 2 + 23.25 + 3.5), 60.0 / 360);
+    hoodAngleMap.put(Units.inchesToMeters(70.0 + 27 / 2 + 23.25 + 3.5), 70.0 / 360);
+    hoodAngleMap.put(Units.inchesToMeters(80.0 + 27 / 2 + 23.25 + 3.5), 80.0 / 360);
+    hoodAngleMap.put(Units.inchesToMeters(130), (170.0 - 50.0) / 360);
+    hoodAngleMap.put(Units.inchesToMeters(140), (170.0 - 50.0) / 360);
+    hoodAngleMap.put(Units.inchesToMeters(150), (200.0 - 50.0) / 360);
+    hoodAngleMap.put(Units.inchesToMeters(160), (200.0 - 50.0) / 360);
+    hoodAngleMap.put(Units.inchesToMeters(170), (210.0 - 50.0) / 360);
   }
 
   private double targetPositionRotations = 0.0;
@@ -82,7 +87,17 @@ public class HoodSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
+    if (AllianceFlipUtil.applyX(robotPoseX) > 3.500
+        && AllianceFlipUtil.applyX(robotPoseX) < 5.500) {
+      hoodMotor.setControl(
+          positionRequest.withPosition(
+              0.0)); // lolwer hood when  approaching trench TODO: make it only go down when
+      // robottoturret, not just robot pose, and tune
+    } else if (AllianceFlipUtil.applyX(robotPoseX) > 5.500) {
+      hoodMotor.setControl(positionRequest.withPosition(FORWARD_SOFT_LIMIT));
+    } else {
+      hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
+    }
   }
 
   public void setTargetDistance(double distanceMeters) {
@@ -90,6 +105,10 @@ public class HoodSubsystem extends SubsystemBase {
     //    targetPositionRotations =
     //        SmartDashboard.getNumber("Target Angle", 0.0) / 360.0; // convert from degrees to
     // rotations
+  }
+
+  public void setRobotPosex(double xMeters) {
+    robotPoseX = xMeters;
   }
 
   public void setPosition(double positionRotations) {
@@ -101,6 +120,6 @@ public class HoodSubsystem extends SubsystemBase {
   }
 
   public boolean atTarget() {
-    return Math.abs(getPosition() - targetPositionRotations) < 30.0 / 360.0; // tune
+    return Math.abs(getPosition() - targetPositionRotations) < 10.0 / 360.0; // tune
   }
 }

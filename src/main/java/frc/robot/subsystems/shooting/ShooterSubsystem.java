@@ -12,8 +12,10 @@ import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
+// import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.handoff.HandoffSubsystem;
+import org.littletonrobotics.junction.Logger;
 
 public class ShooterSubsystem extends SubsystemBase {
   private static final ShooterSubsystem INSTANCE = new ShooterSubsystem();
@@ -38,12 +40,12 @@ public class ShooterSubsystem extends SubsystemBase {
   static final double kS = 0.16;
   static final double kV = 0.104;
   static final double kA = 0.001;
-  static final double kP_STEADY = 0.1; // tune
-  static final double kD_STEADY = 0.0;
+  static final double kP_STEADY = 0.25; // tune
+  static final double kD_STEADY = 0.02; // 0.014
 
   // getting back to speed after shot
-  static final double kP_RECOVERY = 0.4; // tune — aggressive
-  static final double kD_RECOVERY = 0.01; // tune — dampen overshoot
+  static final double kP_RECOVERY = 0.35; // tune — aggressive
+  static final double kD_RECOVERY = 0.04; // tune — dampen overshoot
 
   // rpm error to switch slots
   static final double RECOVERY_THRESHOLD_RPS = 100.0 / 60.0; // low since flywheel drop is small
@@ -59,11 +61,11 @@ public class ShooterSubsystem extends SubsystemBase {
 
   // config
   private final double overspinFactor = 1.07;
-  private final double rpmRapidFireTolerance = 250;
+  private final double rpmRapidFireTolerance = 150;
   private final double rpmAccurateTolerance = 50;
   private final double passingTolerance = 500; // tune
 
-  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(20); // rps
+  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // rps
 
   private final VelocityVoltage velocityRequest = new VelocityVoltage(0);
   private final VoltageOut voltageRequest = new VoltageOut(0);
@@ -74,15 +76,17 @@ public class ShooterSubsystem extends SubsystemBase {
   static {
     // example — replace with real data
     // distance (m) -> rpm
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(74.5 + 27 / 2 + 23.25), 2500.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(84.5 + 27 / 2 + 23.25), 2600.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(94.5 + 27 / 2 + 23.25), 2700.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(104.5 + 27 / 2 + 23.25), 2800.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(114.5 + 27 / 2 + 23.25), 2850.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(124.5 + 27 / 2 + 23.25), 2950.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(134.5 + 27 / 2 + 23.25), 3050.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(144.5 + 27 / 2 + 23.25), 3150.0);
-    shotFlywheelSpeedMap.put(Units.inchesToMeters(166.5 + 27 / 2 + 23.25), 3300.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(30.0 + 27 / 2 + 23.25 + 3.5), 2450.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(40.0 + 27 / 2 + 23.25 + 3.5), 2550.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(50.0 + 27 / 2 + 23.25 + 3.5), 2600.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(60.0 + 27 / 2 + 23.25 + 3.5), 2600.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(70.0 + 27 / 2 + 23.25 + 3.5), 2750.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(80.0 + 27 / 2 + 23.25 + 3.5), 2800.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(130), 2850.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(140), 3000.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(150), 3000.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(160), 3100.0);
+    shotFlywheelSpeedMap.put(Units.inchesToMeters(170), 3200.0);
   }
 
   private ShooterSubsystem() {
@@ -153,6 +157,8 @@ public class ShooterSubsystem extends SubsystemBase {
     beamBreakPredicting =
         beamBreakTriggerTime > 0 && (now - beamBreakTriggerTime) >= BEAM_BREAK_DELAY_SECONDS;
 
+    int activeSlot = 0;
+
     switch (state) {
       case SPIN_UP:
         double rampedRPS = spinUpRamp.calculate(targetRPS);
@@ -164,12 +170,11 @@ public class ShooterSubsystem extends SubsystemBase {
         // slot 1 if beam break or rpm error exceeds threshold
         double error = Math.abs(targetRPS - currentRPS);
         boolean useRecovery = beamBreakPredicting || error > RECOVERY_THRESHOLD_RPS;
-        int slot = useRecovery ? 1 : 0;
-        shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(slot));
+        activeSlot = useRecovery ? 1 : 0;
+        shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(activeSlot));
         break;
       case PASSING:
         shooterMotor.setControl(voltageRequest.withOutput(10.0)); // full voltage for passing
-        System.out.println("PASSING");
         break;
       case IDLE:
       case EMPTY:
@@ -179,6 +184,21 @@ public class ShooterSubsystem extends SubsystemBase {
         beamBreakPredicting = false;
         break;
     }
+
+    Logger.recordOutput("Shooter/TargetRPM", targetRPM);
+    Logger.recordOutput("Shooter/CurrentRPM", currentRPM);
+    Logger.recordOutput("Shooter/ErrorRPM", targetRPM - currentRPM);
+    Logger.recordOutput("Shooter/TargetRPS", targetRPS);
+    Logger.recordOutput("Shooter/CurrentRPS", currentRPS);
+    Logger.recordOutput("Shooter/ActiveSlot", activeSlot);
+    Logger.recordOutput("Shooter/State", state.name());
+    Logger.recordOutput("Shooter/AtGoalSpeed", isAtGoalSpeed());
+    Logger.recordOutput("Shooter/BeamBreakPredicting", beamBreakPredicting);
+    Logger.recordOutput("Shooter/DistanceM", distance);
+    Logger.recordOutput(
+        "Shooter/SupplyCurrent", shooterMotor.getSupplyCurrent().getValueAsDouble());
+    Logger.recordOutput(
+        "Shooter/StatorCurrent", shooterMotor.getStatorCurrent().getValueAsDouble());
   }
 
   double getVelocityRevPerSec() {
@@ -200,8 +220,7 @@ public class ShooterSubsystem extends SubsystemBase {
   public boolean isAtGoalSpeed() {
     double distance = getTargetDistance();
     double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
-    //    double targetRPM = SmartDashboard.getNumber("Target Speed", 0.0);
-    //            * overspinFactor;
+    //    double targetRPM = SmartDashboard.getNumber("Target Speed", 0.0) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
     if (state == ShooterState.PASSING) {
       return Math.abs(currentRPM - targetRPM) <= passingTolerance;

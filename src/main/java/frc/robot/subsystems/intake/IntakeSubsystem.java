@@ -6,8 +6,11 @@ import com.ctre.phoenix6.controls.PositionDutyCycle;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import com.revrobotics.spark.FeedbackSensor;
+import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkBase.PersistMode;
 import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
@@ -43,7 +46,7 @@ public class IntakeSubsystem extends SubsystemBase {
   private static final double DEPLOY_I = 0.01; // tune
   private static final double DEPLOY_D = 0.0; // tune
   // Slot 1 — stow (up)
-  private static final double STOW_P = 0.2; // tune
+  private static final double STOW_P = 0.6; // tune
   private static final double STOW_I = 0.01; // tune
   private static final double STOW_D = 0.0; // tune
 
@@ -51,13 +54,20 @@ public class IntakeSubsystem extends SubsystemBase {
   static final double kV = 0.104;
   static final double kA = 0.001;
 
-  private static final double INTAKE_VOLTAGE = 6.0;
-  private static final double EJECT_VOLTAGE = -6.0; // tune
+  private static final double INTAKE_RPM = 3000.0; // tune
+  private static final double EJECT_RPM = -3000.0; // tune
+
+  // roller velocity PID
+  private static final double ROLLER_P = 0.0002; // tune
+  private static final double ROLLER_I = 0.0;
+  private static final double ROLLER_D = 0.0;
+  private static final double ROLLER_KV = 12.0 / 5676.0; // volts per RPM, NEO free speed ~5676 RPM
 
   private final TalonFX deployMotor = new TalonFX(DEPLOY_MOTOR_ID);
   private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
 
   private final SparkMax rollerMotor = new SparkMax(ROLLER_MOTOR_ID, MotorType.kBrushless);
+  private final SparkClosedLoopController rollerPID = rollerMotor.getClosedLoopController();
 
   private IntakeSubsystem() {
     var config = new TalonFXConfiguration();
@@ -94,6 +104,12 @@ public class IntakeSubsystem extends SubsystemBase {
 
     SparkMaxConfig rollerConfig = new SparkMaxConfig();
     rollerConfig.idleMode(IdleMode.kCoast).smartCurrentLimit(35).inverted(false);
+    rollerConfig
+        .closedLoop
+        .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
+        .pid(ROLLER_P, ROLLER_I, ROLLER_D)
+        .feedForward
+        .kV(ROLLER_KV);
     rollerMotor.configure(
         rollerConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
@@ -104,26 +120,22 @@ public class IntakeSubsystem extends SubsystemBase {
   public void periodic() {
     switch (state) {
       case STOWED:
-        deployMotor.setControl(new PositionDutyCycle(STOW_POSITION).withSlot(1));
+        deployMotor.setVoltage(0.0);
         rollerMotor.setVoltage(0.0);
         break;
       case DEPLOYING:
-        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
         deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setVoltage(0.0);
         break;
       case INTAKING:
-        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
         deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
-        rollerMotor.setVoltage(INTAKE_VOLTAGE);
+        rollerPID.setSetpoint(INTAKE_RPM, ControlType.kVelocity);
         break;
       case EJECTING:
-        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
         deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
-        rollerMotor.setVoltage(EJECT_VOLTAGE);
+        rollerPID.setSetpoint(EJECT_RPM, ControlType.kVelocity);
         break;
       case IDLE_DEPLOYED:
-        //        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION));
         deployMotor.setControl(new PositionDutyCycle(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setVoltage(0.0);
         break;
