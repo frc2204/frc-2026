@@ -24,7 +24,7 @@ public class HandoffSubsystem extends SubsystemBase {
   private static final int HANDOFF_MOTOR_ID = 41;
   private static final int BEAM_BREAK_DIO = 0;
 
-  private static final double FEED_VOLTAGE = -8.0; // tune
+  private static final double FEED_VOLTAGE = -12.0; // tune
   private static final double REVERSE_VOLTAGE = 4.0; // tune
 
   // if beam break is blocked for this long reverse
@@ -41,7 +41,7 @@ public class HandoffSubsystem extends SubsystemBase {
 
   private HandoffSubsystem() {
     SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kCoast).smartCurrentLimit(30).inverted(false);
+    config.idleMode(IdleMode.kCoast).smartCurrentLimit(40).inverted(false);
     handoffMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
   }
 
