@@ -12,7 +12,7 @@ import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
-// import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.handoff.HandoffSubsystem;
 import org.littletonrobotics.junction.Logger;
@@ -36,16 +36,42 @@ public class ShooterSubsystem extends SubsystemBase {
 
   private ShooterState state = ShooterState.IDLE;
 
-  // holding speed
-  static final double kS = 0.16;
-  static final double kV = 0.104;
-  static final double kA = 0.001;
-  static final double kP_STEADY = 0.25; // tune
-  static final double kD_STEADY = 0.02; // 0.014
+  // ── TUNING GUIDE ──────────────────────────────────────────────────────────
+  // All PID values appear on SmartDashboard under "Shooter/PID/...".
+  // Changes take effect immediately — no redeploy needed.
+  //
+  // Slot 0 (Steady) — holds flywheel at target RPM when no ball is passing through.
+  //   kS: static friction voltage. Increase if flywheel won't spin at low RPM.
+  //   kV: velocity feedforward (volts per RPS). Set so kV * targetRPS ≈ voltage to
+  //       hold that speed with no load. Measure by plotting voltage vs free-spin RPM.
+  //   kA: acceleration feedforward. Usually very small for flywheels; leave near 0.
+  //   kP_STEADY: proportional gain. Start low (~0.1), increase until error is small
+  //       without oscillation. If flywheel oscillates around the setpoint, lower kP.
+  //   kD_STEADY: derivative gain. Dampens overshoot. Increase if kP causes ringing.
+  //       If the system feels sluggish, lower kD.
+  //
+  // Slot 1 (Recovery) — kicks in when a ball passes through and RPM drops.
+  //   kP_RECOVERY: higher than steady to recover RPM aggressively after a shot.
+  //       If recovery overshoots, lower this. If recovery is too slow, raise it.
+  //   kD_RECOVERY: dampens the aggressive recovery. Raise if recovery oscillates.
+  //
+  // WORKFLOW:
+  //   1. Tune kS and kV first with kP/kD at 0 — flywheel should roughly hold speed.
+  //   2. Add kP_STEADY until error is <50 RPM at steady state.
+  //   3. Add kD_STEADY if there's oscillation.
+  //   4. Fire a ball — watch recovery. Raise kP_RECOVERY if slow, kD_RECOVERY if it rings.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // holding speed TODO: add final back later
+  static double kS = 0.16;
+  static double kV = 0.104;
+  static double kA = 0.001;
+  static double kP_STEADY = 0.25;
+  static double kD_STEADY = 0.02;
 
   // getting back to speed after shot
-  static final double kP_RECOVERY = 0.35; // tune — aggressive
-  static final double kD_RECOVERY = 0.04; // tune — dampen overshoot
+  static double kP_RECOVERY = 0.35;
+  static double kD_RECOVERY = 0.04;
 
   // rpm error to switch slots
   static final double RECOVERY_THRESHOLD_RPS = 100.0 / 60.0; // low since flywheel drop is small
@@ -90,7 +116,16 @@ public class ShooterSubsystem extends SubsystemBase {
   }
 
   private ShooterSubsystem() {
-    //    SmartDashboard.putNumber("Target Speed", 0.0);
+    // publish PID values to SmartDashboard for live tuning
+    SmartDashboard.putNumber("Target Speed", 0.0);
+    SmartDashboard.putNumber("Shooter/PID/kS", kS);
+    SmartDashboard.putNumber("Shooter/PID/kV", kV);
+    SmartDashboard.putNumber("Shooter/PID/kA", kA);
+    SmartDashboard.putNumber("Shooter/PID/kP_Steady", kP_STEADY);
+    SmartDashboard.putNumber("Shooter/PID/kD_Steady", kD_STEADY);
+    SmartDashboard.putNumber("Shooter/PID/kP_Recovery", kP_RECOVERY);
+    SmartDashboard.putNumber("Shooter/PID/kD_Recovery", kD_RECOVERY);
+
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
@@ -135,6 +170,8 @@ public class ShooterSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    updatePIDFromDashboard();
+
     double distance = getTargetDistance();
 
     double baseRPM = shotFlywheelSpeedMap.get(distance);
@@ -248,5 +285,60 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public void onEnable() {
     spinUpRamp.reset(getVelocityRevPerSec());
+  }
+
+  private void updatePIDFromDashboard() {
+    double newKS = SmartDashboard.getNumber("Shooter/PID/kS", kS);
+    double newKV = SmartDashboard.getNumber("Shooter/PID/kV", kV);
+    double newKA = SmartDashboard.getNumber("Shooter/PID/kA", kA);
+    double newKP_Steady = SmartDashboard.getNumber("Shooter/PID/kP_Steady", kP_STEADY);
+    double newKD_Steady = SmartDashboard.getNumber("Shooter/PID/kD_Steady", kD_STEADY);
+    double newKP_Recovery = SmartDashboard.getNumber("Shooter/PID/kP_Recovery", kP_RECOVERY);
+    double newKD_Recovery = SmartDashboard.getNumber("Shooter/PID/kD_Recovery", kD_RECOVERY);
+
+    boolean changed =
+        newKS != kS
+            || newKV != kV
+            || newKA != kA
+            || newKP_Steady != kP_STEADY
+            || newKD_Steady != kD_STEADY
+            || newKP_Recovery != kP_RECOVERY
+            || newKD_Recovery != kD_RECOVERY;
+
+    if (!changed) return;
+
+    kS = newKS;
+    kV = newKV;
+    kA = newKA;
+    kP_STEADY = newKP_Steady;
+    kD_STEADY = newKD_Steady;
+    kP_RECOVERY = newKP_Recovery;
+    kD_RECOVERY = newKD_Recovery;
+
+    var config = new TalonFXConfiguration();
+    config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.CurrentLimits.SupplyCurrentLimit = 70.0;
+    config.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
+    config.CurrentLimits.SupplyCurrentLowerTime = 1.5;
+    config.CurrentLimits.StatorCurrentLimit = 120.0;
+    config.CurrentLimits.StatorCurrentLimitEnable = true;
+
+    config.Slot0.kS = kS;
+    config.Slot0.kV = kV;
+    config.Slot0.kA = kA;
+    config.Slot0.kP = kP_STEADY;
+    config.Slot0.kI = 0.0;
+    config.Slot0.kD = kD_STEADY;
+
+    config.Slot1.kS = kS;
+    config.Slot1.kV = kV;
+    config.Slot1.kA = kA;
+    config.Slot1.kP = kP_RECOVERY;
+    config.Slot1.kI = 0.0;
+    config.Slot1.kD = kD_RECOVERY;
+
+    shooterMotor.getConfigurator().apply(config);
   }
 }
