@@ -10,6 +10,7 @@ import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.util.Units;
 // import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.util.FieldConstants;
 import frc.robot.util.geometry.AllianceFlipUtil;
 
 public class HoodSubsystem extends SubsystemBase {
@@ -83,18 +84,25 @@ public class HoodSubsystem extends SubsystemBase {
 
     hoodMotor.getConfigurator().apply(config);
     hoodMotor.setPosition(0);
+    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(hoodMotor);
   }
 
   @Override
   public void periodic() {
-    if (AllianceFlipUtil.applyX(robotPoseX) > 3.500
-        && AllianceFlipUtil.applyX(robotPoseX) < 5.500) {
+    if (AllianceFlipUtil.applyX(robotPoseX) > 3.0 // 3.5
+        && AllianceFlipUtil.applyX(robotPoseX) < 6) { // 5.5
       hoodMotor.setControl(
           positionRequest.withPosition(
               0.0)); // lolwer hood when  approaching trench TODO: make it only go down when
       // robottoturret, not just robot pose, and tune
-    } else if (AllianceFlipUtil.applyX(robotPoseX) > 5.500) {
-      hoodMotor.setControl(positionRequest.withPosition(FORWARD_SOFT_LIMIT - 0.05)); // give it a little buffer so it doesn't hit the soft stop
+    } else if (AllianceFlipUtil.applyX(robotPoseX) < FieldConstants.FIELDLENGTH - 3.0
+        && AllianceFlipUtil.applyX(robotPoseX) > FieldConstants.FIELDLENGTH - 6.0) {
+      hoodMotor.setControl(positionRequest.withPosition(0.0));
+    } else if (AllianceFlipUtil.applyX(robotPoseX) > 6.0) {
+      hoodMotor.setControl(
+          positionRequest.withPosition(
+              FORWARD_SOFT_LIMIT
+                  - 0.05)); // give it a little buffer so it doesn't hit the soft stop
     } else {
       hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
     }

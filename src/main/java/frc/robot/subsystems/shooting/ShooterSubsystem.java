@@ -38,14 +38,14 @@ public class ShooterSubsystem extends SubsystemBase {
 
   // holding speed
   static final double kS = 0.16;
-  static final double kV = 0.104;
+  static final double kV = 0.117; // 0.104
   static final double kA = 0.001;
-  static final double kP_STEADY = 0.25; // tune
-  static final double kD_STEADY = 0.02; // 0.014
+  static final double kP_STEADY = 0.05; // tune //225
+  static final double kD_STEADY = 0.03; // 0.014
 
   // getting back to speed after shot
-  static final double kP_RECOVERY = 0.35; // tune — aggressive
-  static final double kD_RECOVERY = 0.04; // tune — dampen overshoot
+  static final double kP_RECOVERY = 0.1; // tune — aggressive
+  static final double kD_RECOVERY = 0.045; // tune — dampen overshoot
 
   // rpm error to switch slots
   static final double RECOVERY_THRESHOLD_RPS = 100.0 / 60.0; // low since flywheel drop is small
@@ -61,7 +61,8 @@ public class ShooterSubsystem extends SubsystemBase {
 
   // config
   private final double overspinFactor = 1.07;
-  private final double rpmRapidFireTolerance = 150;
+  private final double rpmRapidFireTolerance =
+      500; // tune — how much error we allow during rapid fire before switching to recovery slot
   private final double rpmAccurateTolerance = 50;
   private final double passingTolerance = 500; // tune
 
@@ -95,12 +96,11 @@ public class ShooterSubsystem extends SubsystemBase {
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
 
-    // 70a burst for 1.5s drop to 35a sustained
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config.CurrentLimits.SupplyCurrentLimit = 70.0;
-    config.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
-    config.CurrentLimits.SupplyCurrentLowerTime = 1.5;
-    config.CurrentLimits.StatorCurrentLimit = 120.0;
+    config.CurrentLimits.SupplyCurrentLimit = 50.0;
+    config.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    config.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    config.CurrentLimits.StatorCurrentLimit = 80.0;
     config.CurrentLimits.StatorCurrentLimitEnable = true;
 
     config.Slot0.kS = kS;
@@ -124,13 +124,14 @@ public class ShooterSubsystem extends SubsystemBase {
     config2.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config2.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     config2.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config2.CurrentLimits.SupplyCurrentLimit = 70.0;
-    config2.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
-    config2.CurrentLimits.SupplyCurrentLowerTime = 1.5;
-    config2.CurrentLimits.StatorCurrentLimit = 120.0;
+    config2.CurrentLimits.SupplyCurrentLimit = 50.0;
+    config2.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    config2.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    config2.CurrentLimits.StatorCurrentLimit = 80.0;
     config2.CurrentLimits.StatorCurrentLimitEnable = true;
     shooterMotor2.getConfigurator().apply(config2);
     shooterMotor2.setControl(new Follower(shooterMotor.getDeviceID(), MotorAlignmentValue.Opposed));
+    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(shooterMotor, shooterMotor2);
   }
 
   @Override
@@ -223,7 +224,9 @@ public class ShooterSubsystem extends SubsystemBase {
     //    double targetRPM = SmartDashboard.getNumber("Target Speed", 0.0) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
     if (state == ShooterState.PASSING) {
-      return Math.abs(currentRPM - targetRPM) <= passingTolerance;
+      //      return Math.abs(currentRPM - targetRPM) <= passingTolerance;
+      return true; // don't check speed for passing since it's just open loop voltage and we want to
+      // feed as soon as possible
     }
     return Math.abs(currentRPM - targetRPM) <= rpmRapidFireTolerance;
   }

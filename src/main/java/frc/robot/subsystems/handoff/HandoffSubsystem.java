@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.intake.IndexerSubsystem;
 import frc.robot.subsystems.shooting.ShooterSubsystem;
 import frc.robot.subsystems.shooting.ShooterSubsystem.ShooterState;
+import org.littletonrobotics.junction.Logger;
 
 public class HandoffSubsystem extends SubsystemBase {
 
@@ -24,7 +25,9 @@ public class HandoffSubsystem extends SubsystemBase {
   private static final int HANDOFF_MOTOR_ID = 41;
   private static final int BEAM_BREAK_DIO = 0;
 
-  private static final double FEED_VOLTAGE = -12.0; // tune
+  private static final double FEED_VOLTAGE_PEAK = -12.0; // first second burst
+  private static final double FEED_VOLTAGE_STEADY = -7.0; // after 1s
+  private static final double PEAK_DURATION = 1.0; // seconds
   private static final double REVERSE_VOLTAGE = 4.0; // tune
 
   // if beam break is blocked for this long reverse
@@ -35,18 +38,40 @@ public class HandoffSubsystem extends SubsystemBase {
   private final DigitalInput beamBreak = new DigitalInput(BEAM_BREAK_DIO);
   private boolean forceReverse = false;
 
+  private double feedStartTime = -1.0;
   private double blockedStartTime = -1.0;
   private double unjamStartTime = -1.0;
   private boolean unjamming = false;
 
+  private boolean lastBeamBroken = false;
+  private int ballsScored = 0;
+
   private HandoffSubsystem() {
     SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kCoast).smartCurrentLimit(40).inverted(false);
-    handoffMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
+    config.idleMode(IdleMode.kCoast).smartCurrentLimit(25).inverted(false);
+    config
+        .signals
+        .primaryEncoderPositionPeriodMs(500)
+        .primaryEncoderVelocityPeriodMs(500)
+        .analogVoltagePeriodMs(500)
+        .analogPositionPeriodMs(500)
+        .analogVelocityPeriodMs(500)
+        .appliedOutputPeriodMs(100)
+        .busVoltagePeriodMs(500)
+        .outputCurrentPeriodMs(500);
+    handoffMotor.configure(
+        config, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
   }
 
   @Override
   public void periodic() {
+    boolean currentBeamBroken = isBeamBroken();
+    if (currentBeamBroken && !lastBeamBroken) {
+      ballsScored++;
+    }
+    lastBeamBroken = currentBeamBroken;
+    Logger.recordOutput("Handoff/BallsScored", ballsScored);
+
     ShooterSubsystem.ShooterState st = ShooterSubsystem.getInstance().getState();
     //    System.out.println(
     //        "handoff: beamBroken="
@@ -66,7 +91,7 @@ public class HandoffSubsystem extends SubsystemBase {
 
     boolean shouldFeed = false;
     if (shooterState == ShooterState.PASSING) {
-      shouldFeed = ShooterSubsystem.getInstance().isAtGoalSpeed(); // full voltage, feed
+      shouldFeed = true; // full voltage, feed
     }
     //    shooterState == ShooterState.PASSING ||
     //    if (shooterState == ShooterState.OVERRIDE) {
@@ -87,7 +112,12 @@ public class HandoffSubsystem extends SubsystemBase {
       handoffMotor.setVoltage(0.0);
       IndexerSubsystem.getInstance().stop();
       resetJamState();
+      feedStartTime = -1.0;
       return;
+    }
+
+    if (feedStartTime < 0) {
+      feedStartTime = Timer.getFPGATimestamp();
     }
 
     double now = Timer.getFPGATimestamp();
@@ -116,7 +146,9 @@ public class HandoffSubsystem extends SubsystemBase {
       blockedStartTime = -1.0;
     }
 
-    handoffMotor.setVoltage(FEED_VOLTAGE);
+    double feedVoltage =
+        (now - feedStartTime < PEAK_DURATION) ? FEED_VOLTAGE_PEAK : FEED_VOLTAGE_STEADY;
+    handoffMotor.setVoltage(feedVoltage);
   }
 
   private void resetJamState() {

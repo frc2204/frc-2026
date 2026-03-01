@@ -17,6 +17,8 @@ import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.GenericHID.RumbleType;
+import edu.wpi.first.wpilibj.PowerDistribution;
+import edu.wpi.first.wpilibj.PowerDistribution.ModuleType;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -45,6 +47,7 @@ import frc.robot.util.FieldConstants;
 import frc.robot.util.HubShiftUtil;
 import frc.robot.util.geometry.AllianceFlipUtil;
 import java.util.List;
+import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 /**
@@ -66,6 +69,7 @@ public class RobotContainer {
   private final ObjectDetection objectDetection;
   private final frc.robot.subsystems.leds.CANdleSubsystem leds;
   private final frc.robot.util.DriverViewSelector driverView;
+  private final PowerDistribution pdh = new PowerDistribution(45, ModuleType.kRev);
 
   // Controller
   private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
@@ -74,6 +78,7 @@ public class RobotContainer {
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
   private final Field2d field = new Field2d();
+  private int pdhLogCounter = 0;
 
   /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
@@ -253,7 +258,7 @@ public class RobotContainer {
                 () -> -ps5Controller.getLeftX(),
                 () -> -ps5Controller.getRightX()));
 
-    double slowFactor = 0.25; // tune
+    double slowFactor = 0.65; // tune
     ps5Controller
         .cross()
         .whileTrue(
@@ -370,7 +375,7 @@ public class RobotContainer {
                 intake,
                 indexer));
 
-    // L1 + R1 together: reverse handoff and indexer
+    // L1 + R1 together: reverse handoff and indexer and intake
     ps5Controller
         .L1()
         .and(ps5Controller.R1())
@@ -379,17 +384,21 @@ public class RobotContainer {
                 () -> {
                   handoff.setReverse(true);
                   indexer.reverse();
+                  intake.eject();
                 },
                 handoff,
-                indexer))
+                indexer,
+                intake))
         .onFalse(
             Commands.runOnce(
                 () -> {
                   handoff.setReverse(false);
                   indexer.stop();
+                  intake.stow();
                 },
                 handoff,
-                indexer));
+                indexer,
+                intake));
 
     //    // D-pad up: chase nearest detected ball
     //    ps5Controller
@@ -479,6 +488,16 @@ public class RobotContainer {
 
     // Driver camera view
     driverView.update();
+
+    // PDH / current draw logging (every 10 loops ~200ms to reduce CAN load)
+    if (++pdhLogCounter >= 10) {
+      pdhLogCounter = 0;
+      Logger.recordOutput("PDH/Voltage", pdh.getVoltage());
+      Logger.recordOutput("PDH/TotalCurrent", pdh.getTotalCurrent());
+      for (int ch = 0; ch < 24; ch++) {
+        Logger.recordOutput("PDH/Channel" + ch, pdh.getCurrent(ch));
+      }
+    }
   }
 
   /** Resets the pose to the alliance zone if no auto was run (pose is still near origin). */

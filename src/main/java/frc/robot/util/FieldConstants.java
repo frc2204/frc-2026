@@ -16,9 +16,9 @@ public class FieldConstants {
   public static final double FIELDWIDTH = 8.069326;
 
   public static final Pose2d TOPTARGET =
-      new Pose2d(0, FIELDWIDTH * 1.0, new Rotation2d()); // alliance wall at 3/4 field width
+      new Pose2d(0, FIELDWIDTH * 0.75, new Rotation2d()); // alliance wall at 3/4 field width
   public static final Pose2d BOTTOMTARGET =
-      new Pose2d(0, 0, new Rotation2d()); // alliance wall at 1/4 field width
+      new Pose2d(0, FIELDWIDTH * 0.25, new Rotation2d()); // alliance wall at 1/4 field width
 
   public static final double ALLIANCEWALLTOHUB = 4.625594; // center of hub
   public static final Pose2d HUBPOSE =

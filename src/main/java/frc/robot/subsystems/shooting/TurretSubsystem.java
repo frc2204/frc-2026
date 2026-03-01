@@ -60,6 +60,7 @@ public class TurretSubsystem extends SubsystemBase {
   private double lastUnwindTime = Double.POSITIVE_INFINITY;
 
   private boolean wrappingAround;
+  private boolean atSoftLimit = false;
 
   private double lastTimeAtGoal = 0;
 
@@ -124,6 +125,7 @@ public class TurretSubsystem extends SubsystemBase {
 
     turretMotor.getConfigurator().apply(config);
     turretMotor.setPosition(0 / 360.0);
+    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(turretMotor);
   }
 
   @Override
@@ -163,7 +165,10 @@ public class TurretSubsystem extends SubsystemBase {
     double distanceToHub = getDistanceFromHub(robotPose);
     ShooterSubsystem.getInstance().setTargetDistance(distanceToHub);
     HoodSubsystem.getInstance().setTargetDistance(distanceToHub);
-//    System.out.println(Units.metersToInches(distanceToHub));
+    //    System.out.println(Units.metersToInches(distanceToHub));
+    Translation2d turretFieldPos =
+        robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
+    //    HoodSubsystem.getInstance().setRobotPosex(turretFieldPos.getX());
     HoodSubsystem.getInstance().setRobotPosex(robotPose.getX());
 
     updateTargetPose();
@@ -331,13 +336,13 @@ public class TurretSubsystem extends SubsystemBase {
 
   public boolean isOnTarget() {
     double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
-    return positionError < 3.0 && !isUnwinding && !wrappingAround;
+    return positionError < 3.0 && !isUnwinding && !wrappingAround && !atSoftLimit;
   }
 
   // for passing
   public boolean isLooselyOnTarget() {
     double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
-    return positionError < 15.0 && !isUnwinding && !wrappingAround;
+    return positionError < 15.0 && !isUnwinding && !wrappingAround && !atSoftLimit;
   }
 
   // pass when near hub (mid Y + mid X) but not in our alliance zone
@@ -401,8 +406,10 @@ public class TurretSubsystem extends SubsystemBase {
               Math.toRadians(getVelocityDegPerSec()));
     }
 
-    angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
-    return angle;
+    double clampedAngle =
+        MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
+    atSoftLimit = Math.abs(clampedAngle - angle) > Math.toRadians(1.0);
+    return clampedAngle;
   }
 
   // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past

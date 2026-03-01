@@ -7,7 +7,13 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Example Path"
+            "pathName": "TopToMiddle"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "deployIntake"
           }
         },
         {
@@ -15,18 +21,24 @@
           "data": {
             "commands": [
               {
-                "type": "named",
+                "type": "path",
                 "data": {
-                  "name": null
+                  "pathName": "MiddleToBalls"
                 }
               },
               {
-                "type": "path",
+                "type": "named",
                 "data": {
-                  "pathName": "New Path"
+                  "name": "spinUpShooter"
                 }
               }
             ]
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "overrideShooter"
           }
         }
       ]

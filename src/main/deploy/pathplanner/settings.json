@@ -28,5 +28,13 @@
   "brModuleY": -0.279,
   "bumperOffsetX": 0.0,
   "bumperOffsetY": 0.0,
-  "robotFeatures": []
+  "robotFeatures": [],
+  "namedCommands": [
+    "deployIntake",
+    "stowIntake",
+    "spinUpShooter",
+    "idleShooter",
+    "overrideShooter",
+    "rapidFireShooter"
+  ]
 }
