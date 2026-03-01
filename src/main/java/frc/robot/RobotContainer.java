@@ -519,6 +519,10 @@ public class RobotContainer {
     }
   }
 
+  public TurretSubsystem getTurret() {
+    return turret;
+  }
+
   // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far
   // then 1
   private double getShootingSpeedFactor() {

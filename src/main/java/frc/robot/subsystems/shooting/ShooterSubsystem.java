@@ -12,7 +12,7 @@ import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
-// import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.handoff.HandoffSubsystem;
 import org.littletonrobotics.junction.Logger;
@@ -36,7 +36,35 @@ public class ShooterSubsystem extends SubsystemBase {
 
   private ShooterState state = ShooterState.IDLE;
 
-  // holding speed
+
+    // ── TUNING GUIDE ──────────────────────────────────────────────────────────
+    // All PID values appear on SmartDashboard under "Shooter/PID/...".
+    // Changes take effect immediately — no redeploy needed.
+    //
+    // Slot 0 (Steady) — holds flywheel at target RPM when no ball is passing through.
+    //   kS: static friction voltage. Increase if flywheel won't spin at low RPM.
+    //   kV: velocity feedforward (volts per RPS). Set so kV * targetRPS ≈ voltage to
+    //       hold that speed with no load. Measure by plotting voltage vs free-spin RPM.
+    //   kA: acceleration feedforward. Usually very small for flywheels; leave near 0.
+    //   kP_STEADY: proportional gain. Start low (~0.1), increase until error is small
+    //       without oscillation. If flywheel oscillates around the setpoint, lower kP.
+    //   kD_STEADY: derivative gain. Dampens overshoot. Increase if kP causes ringing.
+    //       If the system feels sluggish, lower kD.
+    //
+    // Slot 1 (Recovery) — kicks in when a ball passes through and RPM drops.
+    //   kP_RECOVERY: higher than steady to recover RPM aggressively after a shot.
+    //       If recovery overshoots, lower this. If recovery is too slow, raise it.
+    //   kD_RECOVERY: dampens the aggressive recovery. Raise if recovery oscillates.
+    //
+    // WORKFLOW:
+    //   1. Tune kS and kV first with kP/kD at 0 — flywheel should roughly hold speed.
+    //   2. Add kP_STEADY until error is <50 RPM at steady state.
+    //   3. Add kD_STEADY if there's oscillation.
+    //   4. Fire a ball — watch recovery. Raise kP_RECOVERY if slow, kD_RECOVERY if it rings.
+    // ──────────────────────────────────────────────────────────────────────────
+
+
+    // holding speed
   static final double kS = 0.16;
   static final double kV = 0.117; // 0.104
   static final double kA = 0.001;
@@ -96,6 +124,7 @@ public class ShooterSubsystem extends SubsystemBase {
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
 
+    // 70a burst for 1.5s drop to 35a sustained
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
     config.CurrentLimits.SupplyCurrentLimit = 50.0;
     config.CurrentLimits.SupplyCurrentLowerLimit = 30.0;

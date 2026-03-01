@@ -15,6 +15,7 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.LimelightHelpers;
 import frc.robot.util.FieldConstants;
@@ -372,6 +373,10 @@ public class TurretSubsystem extends SubsystemBase {
     return false;
   }
 
+  // ── LEAD MODE SWITCH ────────────────────────────────────────────────────
+  // To swap: comment out one calculateTurretgoalRad, uncomment the other.
+
+  // ── OPTION A: Original angular + translational lead — ACTIVE ──
   public double calculateTurretgoalRad(
       Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
     // base turret angle robot relative poointing towards hub
@@ -411,6 +416,59 @@ public class TurretSubsystem extends SubsystemBase {
     atSoftLimit = Math.abs(clampedAngle - angle) > Math.toRadians(1.0);
     return clampedAngle;
   }
+
+  // ── OPTION B: Iterative convergence lead — INACTIVE ──
+  // private static final int LEAD_ITERATIONS = 3;
+  //
+  // public double calculateTurretgoalRad(
+  //     Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
+  //   // predict where robot will be when ball arrives, aim from there, repeat
+  //   double t = 0.0;
+  //
+  //   for (int i = 0; i < LEAD_ITERATIONS; i++) {
+  //     double futureX = robotPose.getX() + robotVelocity.getX() * t;
+  //     double futureY = robotPose.getY() + robotVelocity.getY() * t;
+  //     double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
+  //     Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
+  //
+  //     Translation2d futureTurretPose =
+  //         new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
+  //     double distance = targetPose.minus(futureTurretPose).getNorm();
+  //     t = ballFlightTimeMap.get(Math.max(distance, 2.5));
+  //   }
+  //
+  //   double futureX = robotPose.getX() + robotVelocity.getX() * t;
+  //   double futureY = robotPose.getY() + robotVelocity.getY() * t;
+  //   double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
+  //   Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
+  //
+  //   Translation2d futureTurretPose =
+  //       new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
+  //   Translation2d toTarget = targetPose.minus(futureTurretPose);
+  //   double fieldAngle = Math.atan2(toTarget.getY(), toTarget.getX());
+  //
+  //   // robot-relative using CURRENT heading (turret is on the current robot)
+  //   double angle =
+  //       MathUtil.angleModulus(
+  //           fieldAngle - robotPose.getRotation().getRadians() - TURRET_FORWARD_OFFSET_RAD);
+  //
+  //   if (isVisionTrustworthy(
+  //       limelightTable.getEntry("tx").getDouble(0.0),
+  //       Math.toRadians(getVelocityDegPerSec()),
+  //       robotOmega,
+  //       getDistanceFromHub(robotPose),
+  //       limelightTable.getEntry("tid").getDouble(0))) {
+  //     angle =
+  //         applyVisionCorrection(
+  //             angle,
+  //             limelightTable.getEntry("tx").getDouble(0.0),
+  //             Math.toRadians(getVelocityDegPerSec()));
+  //   }
+  //
+  //   angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
+  //   return angle;
+  // }
+  // ── END LEAD MODE SWITCH ──────────────────────────────────────────────
 
   // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past
   // mid
