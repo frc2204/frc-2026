@@ -126,8 +126,8 @@ public class ShooterSubsystem extends SubsystemBase {
 
     // 70a burst for 1.5s drop to 35a sustained
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config.CurrentLimits.SupplyCurrentLimit = 50.0;
-    config.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    config.CurrentLimits.SupplyCurrentLimit = 25.0;
+    config.CurrentLimits.SupplyCurrentLowerLimit = 20.0;
     config.CurrentLimits.SupplyCurrentLowerTime = 1.0;
     config.CurrentLimits.StatorCurrentLimit = 80.0;
     config.CurrentLimits.StatorCurrentLimitEnable = true;
@@ -153,8 +153,8 @@ public class ShooterSubsystem extends SubsystemBase {
     config2.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config2.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     config2.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config2.CurrentLimits.SupplyCurrentLimit = 50.0;
-    config2.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    config2.CurrentLimits.SupplyCurrentLimit = 25.0;
+    config2.CurrentLimits.SupplyCurrentLowerLimit = 20.0;
     config2.CurrentLimits.SupplyCurrentLowerTime = 1.0;
     config2.CurrentLimits.StatorCurrentLimit = 80.0;
     config2.CurrentLimits.StatorCurrentLimitEnable = true;
