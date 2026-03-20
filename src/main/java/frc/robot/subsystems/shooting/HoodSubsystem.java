@@ -7,8 +7,7 @@ import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
-import edu.wpi.first.math.util.Units;
-// import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.FieldConstants;
 import frc.robot.util.geometry.AllianceFlipUtil;
@@ -34,34 +33,39 @@ public class HoodSubsystem extends SubsystemBase {
   private static final double kS = 0.1; // tune
 
   private final TalonFX hoodMotor = new TalonFX(HOOD_MOTOR_ID);
-  private final PositionVoltage positionRequest = new PositionVoltage(0);
+  private final PositionVoltage positionRequest = new PositionVoltage(0).withEnableFOC(true);
 
   private static final InterpolatingDoubleTreeMap hoodAngleMap = new InterpolatingDoubleTreeMap();
 
   private double robotPoseX = 0;
 
   static {
-    // distance in meters and   hood position in rotations
-    hoodAngleMap.put(Units.inchesToMeters(30.0 + 27 / 2 + 23.25 + 3.5), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(40.0 + 27 / 2 + 23.25 + 3.5), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(50.0 + 27 / 2 + 23.25 + 3.5), 0.0);
-    hoodAngleMap.put(Units.inchesToMeters(60.0 + 27 / 2 + 23.25 + 3.5), 60.0 / 360);
-    hoodAngleMap.put(Units.inchesToMeters(70.0 + 27 / 2 + 23.25 + 3.5), 70.0 / 360);
-    hoodAngleMap.put(Units.inchesToMeters(80.0 + 27 / 2 + 23.25 + 3.5), 80.0 / 360);
-    hoodAngleMap.put(Units.inchesToMeters(130), (170.0 - 50.0) / 360);
-    hoodAngleMap.put(Units.inchesToMeters(140), (170.0 - 50.0) / 360);
-    hoodAngleMap.put(Units.inchesToMeters(150), (200.0 - 50.0) / 360);
-    hoodAngleMap.put(Units.inchesToMeters(160), (200.0 - 50.0) / 360);
-    hoodAngleMap.put(Units.inchesToMeters(170), (210.0 - 50.0) / 360);
+    // distance (m) -> hood position (rotations)
+    hoodAngleMap.put(1.320, 0.0);
+    hoodAngleMap.put(1.573, 0.0);
+    hoodAngleMap.put(1.723, 0.0);
+    hoodAngleMap.put(2.002, 0.0);
+    hoodAngleMap.put(2.250, 0.0);
+    hoodAngleMap.put(2.514, 30.0 / 360.0);
+    hoodAngleMap.put(2.750, 40.0 / 360.0);
+    hoodAngleMap.put(3.000, 50.0 / 360.0);
+    hoodAngleMap.put(3.250, 120.0 / 360.0);
+    hoodAngleMap.put(3.500, 150.0 / 360.0);
+    hoodAngleMap.put(3.730, 175.0 / 360.0);
+    hoodAngleMap.put(4.000, 180.0 / 360.0);
+    hoodAngleMap.put(4.250, 180.0 / 360.0);
+    hoodAngleMap.put(4.500, 220.0 / 360.0);
+    hoodAngleMap.put(4.750, 230.0 / 360.0);
+    hoodAngleMap.put(5.000, 240.0 / 360.0);
   }
 
   private double targetPositionRotations = 0.0;
 
   private HoodSubsystem() {
-    //    SmartDashboard.putNumber("Target Angle", 0.0);
+    SmartDashboard.putNumber("Target Angle", 0.0);
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive; // tune
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive; // tune
 
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
     config.CurrentLimits.SupplyCurrentLimit = 30.0;
@@ -84,7 +88,7 @@ public class HoodSubsystem extends SubsystemBase {
 
     hoodMotor.getConfigurator().apply(config);
     hoodMotor.setPosition(0);
-    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(hoodMotor);
+    // com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(hoodMotor);
   }
 
   @Override
@@ -106,6 +110,9 @@ public class HoodSubsystem extends SubsystemBase {
     } else {
       hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
     }
+
+    // if shooter is tracking human tehe then
+    //    hoodMotor.setControl(positionRequest.withPosition(FORWARD_SOFT_LIMIT - 0.05));
   }
 
   public void setTargetDistance(double distanceMeters) {
@@ -128,6 +135,6 @@ public class HoodSubsystem extends SubsystemBase {
   }
 
   public boolean atTarget() {
-    return Math.abs(getPosition() - targetPositionRotations) < 10.0 / 360.0; // tune
+    return Math.abs(getPosition() - targetPositionRotations) < 50.0 / 360.0; // tune
   }
 }

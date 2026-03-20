@@ -48,9 +48,11 @@ public class ModuleIOTalonFXS implements ModuleIO {
   private final CANdi candi;
 
   // Voltage control requests
-  private final VoltageOut voltageRequest = new VoltageOut(0);
-  private final PositionVoltage positionVoltageRequest = new PositionVoltage(0.0);
-  private final VelocityVoltage velocityVoltageRequest = new VelocityVoltage(0.0);
+  private final VoltageOut voltageRequest = new VoltageOut(0).withEnableFOC(true);
+  private final PositionVoltage positionVoltageRequest =
+      new PositionVoltage(0.0).withEnableFOC(true);
+  private final VelocityVoltage velocityVoltageRequest =
+      new VelocityVoltage(0.0).withEnableFOC(true);
 
   // Timestamp inputs from Phoenix thread
   private final Queue<Double> timestampQueue;

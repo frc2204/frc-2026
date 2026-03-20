@@ -33,18 +33,24 @@ public class VisionConstants {
   // Basic filtering thresholds
   public static double maxAmbiguity = 0.3;
   public static double maxZError = 0.75;
+  public static double maxSingleTagDistance = 3.5; // LL3 reliable range
+  public static double maxSingleTagDistanceLL4 = 5.0; // LL4 global shutter = better at distance
 
   // Standard deviation baselines, for 1 meter distance and 1 tag
   // (Adjusted automatically based on distance and # of tags)
   public static double linearStdDevBaseline = 0.02; // Meters
   public static double angularStdDevBaseline = 0.06; // Radians
 
+  // Distance exponent for std dev scaling (6328 uses 1.2, 2.0 is too aggressive)
+  public static double distanceExponent = 1.5;
+
   // Standard deviation multipliers for each camera
-  // (Adjust to trust some cameras more than others)
+  // Camera order: limelight-left (LL3), limelight-right (LL3), limelight-under (LL4)
   public static double[] cameraStdDevFactors =
       new double[] {
-        1.0, // Camera 0
-        1.0 // Camera 1
+        1.0, // limelight-left (LL3, baseline)
+        1.0, // limelight-right (LL3, baseline)
+        0.8 // limelight-under (LL4, global shutter = more trustworthy)
       };
 
   // Multipliers to apply for MegaTag 2 observations

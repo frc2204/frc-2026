@@ -107,7 +107,7 @@ public class ObjectDetection extends SubsystemBase {
         tf -> tf.fieldPosition.getDistance(robotTranslation) < PICKUP_RADIUS_METERS);
 
     for (RawDetection det : rawDetections) {
-      //System.out.println("Detection classId: " + det.classId + " ta: " + det.ta);
+      // System.out.println("Detection classId: " + det.classId + " ta: " + det.ta);
     }
 
     // Log for AdvantageScope

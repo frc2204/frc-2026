@@ -79,6 +79,10 @@ public class RobotContainer {
   private final LoggedDashboardChooser<Command> autoChooser;
   private final Field2d field = new Field2d();
   private int pdhLogCounter = 0;
+  private boolean slowMode = false;
+  private boolean overrideSpeed = false;
+  private boolean intakeDeployed = false;
+  private double lastIntakeToggleTime = 0;
 
   /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
@@ -240,33 +244,39 @@ public class RobotContainer {
    * edu.wpi.first.wpilibj2.command.button.JoystickButton}.
    */
   private void configureButtonBindings() {
-    // Default command, field-relative drive with shooting speed limit
+    // Default command, field-relative drive with speed modes
+    double slowFactor = 0.65; // tune
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
             drive,
-            () -> -ps5Controller.getLeftY() * getShootingSpeedFactor(),
-            () -> -ps5Controller.getLeftX() * getShootingSpeedFactor(),
-            () -> -ps5Controller.getRightX() * getShootingSpeedFactor()));
+            () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor),
+            () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor),
+            () -> -ps5Controller.getRightX() * getDriveSpeedFactor(slowFactor)));
 
-    // Square: override speed limit (full speed while held)
-    ps5Controller
-        .square()
-        .whileTrue(
-            DriveCommands.joystickDrive(
-                drive,
-                () -> -ps5Controller.getLeftY(),
-                () -> -ps5Controller.getLeftX(),
-                () -> -ps5Controller.getRightX()));
+    // Square: toggle override speed (full speed, ignores shooting slowdown)
+    ps5Controller.square().onTrue(Commands.runOnce(() -> overrideSpeed = !overrideSpeed));
 
-    double slowFactor = 0.65; // tune
+    // TODO:  make triangle spin up and down
+
+    // R3: snap drivetrain heading to nearest 0° or 180° (intake faces forward/backward)
     ps5Controller
-        .cross()
+        .R3()
         .whileTrue(
-            DriveCommands.joystickDrive(
+            DriveCommands.joystickDriveAtAngle(
                 drive,
-                () -> -ps5Controller.getLeftY() * slowFactor,
-                () -> -ps5Controller.getLeftX() * slowFactor,
-                () -> -ps5Controller.getRightX() * slowFactor));
+                () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor),
+                () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor),
+                () -> {
+                  double heading = drive.getRotation().getRadians();
+                  // Normalize to [-PI, PI] then snap to 0 or PI
+                  heading = Math.IEEEremainder(heading, 2.0 * Math.PI);
+                  if (heading > Math.PI / 2.0) return Rotation2d.kPi;
+                  if (heading < -Math.PI / 2.0) return Rotation2d.kPi;
+                  return Rotation2d.kZero;
+                }));
+
+    // Cross: toggle slow mode
+    ps5Controller.cross().onTrue(Commands.runOnce(() -> slowMode = !slowMode));
 
     // Options: reset gyro to 0°
     ps5Controller
@@ -303,6 +313,7 @@ public class RobotContainer {
                   boolean r2Held = ps5Controller.R2().getAsBoolean();
                   boolean l2Held = ps5Controller.L2().getAsBoolean();
                   boolean override = r2Held && l2Held;
+                  boolean insideTower = FieldConstants.isInsideTower(drive.getPose());
                   boolean shiftActive =
                       !edu.wpi.first.wpilibj.DriverStation.isFMSAttached()
                           || HubShiftUtil.getShiftedShiftInfo().active();
@@ -327,6 +338,8 @@ public class RobotContainer {
                           + shiftActive);
                   if (override) {
                     shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE);
+                  } else if (insideTower) {
+                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
                     //                    indexer.feed();
                   } else if (justSpinUp) {
                     shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
@@ -349,36 +362,28 @@ public class RobotContainer {
                 shooter,
                 indexer));
 
-    // L1: press to intake + feed indexer
-    ps5Controller
+    // L1: toggle intake deploy/stow (debounced)
+    ps5Controller // later ask if daniel wants it to be like hold for 1 sec and stop spinning intake
+        // but its still down
         .L1()
-        .and(ps5Controller.R1().negate())
         .onTrue(
             Commands.runOnce(
                 () -> {
-                  intake.intake();
-                  //                  indexer.feed();
+                  double now = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+                  if (now - lastIntakeToggleTime < 0.3) return; // debounce
+                  lastIntakeToggleTime = now;
+                  intakeDeployed = !intakeDeployed;
+                  if (intakeDeployed) {
+                    intake.intake();
+                  } else {
+                    intake.stow();
+                  }
                 },
-                intake,
-                indexer));
+                intake));
 
-    // R1: press to stow intake + stop indexer
+    // R1: override — reverse handoff, indexer, intake while held
     ps5Controller
         .R1()
-        .and(ps5Controller.L1().negate())
-        .onTrue(
-            Commands.runOnce(
-                () -> {
-                  intake.stow();
-                  //                  indexer.stop();
-                },
-                intake,
-                indexer));
-
-    // L1 + R1 together: reverse handoff and indexer and intake
-    ps5Controller
-        .L1()
-        .and(ps5Controller.R1())
         .whileTrue(
             Commands.runOnce(
                 () -> {
@@ -394,7 +399,11 @@ public class RobotContainer {
                 () -> {
                   handoff.setReverse(false);
                   indexer.stop();
-                  intake.stow();
+                  if (intakeDeployed) {
+                    intake.intake();
+                  } else {
+                    intake.stow();
+                  }
                 },
                 handoff,
                 indexer,
@@ -521,6 +530,12 @@ public class RobotContainer {
 
   public TurretSubsystem getTurret() {
     return turret;
+  }
+
+  private double getDriveSpeedFactor(double slowFactor) {
+    if (overrideSpeed) return 1.0;
+    if (slowMode) return slowFactor;
+    return getShootingSpeedFactor();
   }
 
   // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far

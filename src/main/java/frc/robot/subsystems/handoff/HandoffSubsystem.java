@@ -1,11 +1,10 @@
 package frc.robot.subsystems.handoff;
 
-import com.revrobotics.spark.SparkBase.PersistMode;
-import com.revrobotics.spark.SparkBase.ResetMode;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
-import com.revrobotics.spark.SparkMax;
-import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
-import com.revrobotics.spark.config.SparkMaxConfig;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -26,19 +25,23 @@ public class HandoffSubsystem extends SubsystemBase {
   private static final int BEAM_BREAK_DIO = 0;
 
   private static final double FEED_VOLTAGE_PEAK = -12.0; // first second burst
-  private static final double FEED_VOLTAGE_STEADY = -7.0; // after 1s
+  private static final double FEED_VOLTAGE_STEADY = -12.0; // after 1s
   private static final double PEAK_DURATION = 1.0; // seconds
   private static final double REVERSE_VOLTAGE = 4.0; // tune
 
   // if beam break is blocked for this long reverse
   private static final double JAM_TIME_SECONDS = 0.5; // tune
   private static final double UNJAM_TIME_SECONDS = 0.3; // tune
+  private static final double FEED_LATCH_TIME =
+      0.5; // seconds — min time to keep feeding. 0 = no latch
 
-  private final SparkMax handoffMotor = new SparkMax(HANDOFF_MOTOR_ID, MotorType.kBrushless);
+  private final TalonFX handoffMotor = new TalonFX(HANDOFF_MOTOR_ID);
+  private final VoltageOut voltageRequest = new VoltageOut(0.0).withEnableFOC(true);
   private final DigitalInput beamBreak = new DigitalInput(BEAM_BREAK_DIO);
   private boolean forceReverse = false;
 
   private double feedStartTime = -1.0;
+  private double feedLatchStartTime = -1.0;
   private double blockedStartTime = -1.0;
   private double unjamStartTime = -1.0;
   private boolean unjamming = false;
@@ -47,20 +50,15 @@ public class HandoffSubsystem extends SubsystemBase {
   private int ballsScored = 0;
 
   private HandoffSubsystem() {
-    SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kCoast).smartCurrentLimit(25).inverted(false);
-    config
-        .signals
-        .primaryEncoderPositionPeriodMs(500)
-        .primaryEncoderVelocityPeriodMs(500)
-        .analogVoltagePeriodMs(500)
-        .analogPositionPeriodMs(500)
-        .analogVelocityPeriodMs(500)
-        .appliedOutputPeriodMs(100)
-        .busVoltagePeriodMs(500)
-        .outputCurrentPeriodMs(500);
-    handoffMotor.configure(
-        config, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+    TalonFXConfiguration config = new TalonFXConfiguration();
+    config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    config.CurrentLimits.StatorCurrentLimitEnable = true;
+    config.CurrentLimits.StatorCurrentLimit = 60;
+    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.CurrentLimits.SupplyCurrentLimit = 40; // peak spike
+    config.CurrentLimits.SupplyCurrentLowerLimit = 25; // steady state after spike
+    config.CurrentLimits.SupplyCurrentLowerTime = 3.0; // seconds at peak before dropping
   }
 
   @Override
@@ -71,6 +69,8 @@ public class HandoffSubsystem extends SubsystemBase {
     }
     lastBeamBroken = currentBeamBroken;
     Logger.recordOutput("Handoff/BallsScored", ballsScored);
+    Logger.recordOutput("Handoff/BeamBroken", currentBeamBroken);
+    Logger.recordOutput("Handoff/BeamRaw", beamBreak.get());
 
     ShooterSubsystem.ShooterState st = ShooterSubsystem.getInstance().getState();
     //    System.out.println(
@@ -81,7 +81,7 @@ public class HandoffSubsystem extends SubsystemBase {
     //            + " unjamming="
     //            + unjamming);
     if (forceReverse) {
-      handoffMotor.setVoltage(REVERSE_VOLTAGE);
+      handoffMotor.setControl(voltageRequest.withOutput(REVERSE_VOLTAGE));
       resetJamState();
       return;
     }
@@ -104,15 +104,25 @@ public class HandoffSubsystem extends SubsystemBase {
     } else if (shooterState == ShooterState.OVERRIDE) {
       shouldFeed = true;
     }
+    // latch: once feeding starts, keep going for at least FEED_LATCH_TIME
+    double now = Timer.getFPGATimestamp();
+    if (shouldFeed && feedLatchStartTime < 0) {
+      feedLatchStartTime = now;
+    }
+    if (!shouldFeed && feedLatchStartTime > 0 && (now - feedLatchStartTime) < FEED_LATCH_TIME) {
+      shouldFeed = true; // hold feed during latch window
+    }
+
     if (shouldFeed) {
       IndexerSubsystem.getInstance().feed();
     }
 
     if (!shouldFeed) {
-      handoffMotor.setVoltage(0.0);
+      handoffMotor.setControl(voltageRequest.withOutput(0.0));
       IndexerSubsystem.getInstance().stop();
       resetJamState();
       feedStartTime = -1.0;
+      feedLatchStartTime = -1.0;
       return;
     }
 
@@ -120,10 +130,10 @@ public class HandoffSubsystem extends SubsystemBase {
       feedStartTime = Timer.getFPGATimestamp();
     }
 
-    double now = Timer.getFPGATimestamp();
+    //    double now = Timer.getFPGATimestamp();
 
     if (unjamming) {
-      handoffMotor.setVoltage(REVERSE_VOLTAGE);
+      handoffMotor.setControl(voltageRequest.withOutput(REVERSE_VOLTAGE));
       IndexerSubsystem.getInstance().reverse();
       if (now - unjamStartTime >= UNJAM_TIME_SECONDS) {
         unjamming = false;
@@ -148,7 +158,7 @@ public class HandoffSubsystem extends SubsystemBase {
 
     double feedVoltage =
         (now - feedStartTime < PEAK_DURATION) ? FEED_VOLTAGE_PEAK : FEED_VOLTAGE_STEADY;
-    handoffMotor.setVoltage(feedVoltage);
+    handoffMotor.setControl(voltageRequest.withOutput(feedVoltage));
   }
 
   private void resetJamState() {

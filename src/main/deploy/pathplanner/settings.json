@@ -2,7 +2,12 @@
   "robotWidth": 0.787,
   "robotLength": 0.787,
   "holonomicMode": true,
-  "pathFolders": [],
+  "pathFolders": [
+    "Double Neutral Auto",
+    "Double Neutral Bottom Auto",
+    "Choreo",
+    "Sean Auton"
+  ],
   "autoFolders": [],
   "defaultMaxVel": 3.0,
   "defaultMaxAccel": 3.0,
@@ -15,7 +20,7 @@
   "driveWheelRadius": 0.055,
   "driveGearing": 6.201,
   "maxDriveSpeed": 4.98,
-  "driveMotorType": "krakenX60",
+  "driveMotorType": "krakenX60FOC",
   "driveCurrentLimit": 60.0,
   "wheelCOF": 1.2,
   "flModuleX": 0.279,
@@ -28,13 +33,5 @@
   "brModuleY": -0.279,
   "bumperOffsetX": 0.0,
   "bumperOffsetY": 0.0,
-  "robotFeatures": [],
-  "namedCommands": [
-    "deployIntake",
-    "stowIntake",
-    "spinUpShooter",
-    "idleShooter",
-    "overrideShooter",
-    "rapidFireShooter"
-  ]
+  "robotFeatures": []
 }

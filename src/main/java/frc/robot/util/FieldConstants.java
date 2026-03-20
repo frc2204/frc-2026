@@ -9,11 +9,36 @@ package frc.robot.util;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
 
 public class FieldConstants {
   // all in meters
   public static final double FIELDLENGTH = 16.54099;
   public static final double FIELDWIDTH = 8.069326;
+
+  // Tower (blue side — use AllianceFlipUtil for red)
+  public static final double TOWER_FRONT_X = Units.inchesToMeters(43.51); // front face from wall
+  public static final double TOWER_BACK_X = 0.0; // against the alliance wall
+  public static final double TOWER_WIDTH = Units.inchesToMeters(49.25);
+  public static final double TOWER_CENTER_Y = 4.035; // centered on field
+  public static final double TOWER_MIN_Y = TOWER_CENTER_Y - TOWER_WIDTH / 2.0;
+  public static final double TOWER_MAX_Y = TOWER_CENTER_Y + TOWER_WIDTH / 2.0;
+
+  /** Check if a robot pose is inside either alliance's tower footprint. */
+  public static boolean isInsideTower(Pose2d pose) {
+    double x = pose.getX();
+    double y = pose.getY();
+    // Blue tower
+    if (x >= TOWER_BACK_X && x <= TOWER_FRONT_X && y >= TOWER_MIN_Y && y <= TOWER_MAX_Y) {
+      return true;
+    }
+    // Red tower (mirrored)
+    double redBackX = FIELDLENGTH - TOWER_FRONT_X;
+    if (x >= redBackX && x <= FIELDLENGTH && y >= TOWER_MIN_Y && y <= TOWER_MAX_Y) {
+      return true;
+    }
+    return false;
+  }
 
   public static final Pose2d TOPTARGET =
       new Pose2d(0, FIELDWIDTH * 0.75, new Rotation2d()); // alliance wall at 3/4 field width

@@ -15,7 +15,6 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.LimelightHelpers;
 import frc.robot.util.FieldConstants;
@@ -41,18 +40,20 @@ public class TurretSubsystem extends SubsystemBase {
   private final Supplier<ChassisSpeeds> chassisSpeedsSupplier;
 
   private Translation2d robotFieldVelocity;
+  private double predictedDistanceToHub = 0.0;
 
   private static final Translation2d robotToTurret =
       new Translation2d(Units.inchesToMeters(-8.5), 0);
 
   private final TalonFX turretMotor = new TalonFX(20);
-  private final MotionMagicVoltage motionMagicRequest = new MotionMagicVoltage(0);
+  private final MotionMagicVoltage motionMagicRequest =
+      new MotionMagicVoltage(0).withEnableFOC(true);
 
   private static final double MAX_ANGLE = 90;
   private static final double MIN_ANGLE = -90;
   private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
-  private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 35000;
-  private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 1000;
+  private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 38279.9988;
+  private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 15000;
   private static final double UNWIND_THRESHOLD = 500;
   private static final double GEAR_RATIO = 50.0;
 
@@ -62,6 +63,7 @@ public class TurretSubsystem extends SubsystemBase {
 
   private boolean wrappingAround;
   private boolean atSoftLimit = false;
+  private boolean visionTrackOverride = false;
 
   private double lastTimeAtGoal = 0;
 
@@ -80,15 +82,15 @@ public class TurretSubsystem extends SubsystemBase {
     // ballFlightTimeMap.put(Units.inchesToMeters(134.5 + 27.0 / 2.0 + 23.25), 1.2);
     // ballFlightTimeMap.put(Units.inchesToMeters(144.5 + 27.0 / 2.0 + 23.25), 1.3);
     // ballFlightTimeMap.put(Units.inchesToMeters(166.5 + 27.0 / 2.0 + 23.25), 1.3);
-    ballFlightTimeMap.put(2.5, 0.30 * 2); // distance (m) -> flight time (s)
-    ballFlightTimeMap.put(2.8, 0.35 * 2);
-    ballFlightTimeMap.put(3.1, 0.40 * 2);
-    ballFlightTimeMap.put(3.4, 0.45 * 2);
-    ballFlightTimeMap.put(3.7, 0.50 * 2);
-    ballFlightTimeMap.put(4.0, 0.55 * 2);
-    ballFlightTimeMap.put(4.3, 0.60 * 2);
-    ballFlightTimeMap.put(4.6, 0.65 * 2);
-    ballFlightTimeMap.put(5.3, 0.75 * 2);
+    ballFlightTimeMap.put(2.5, 0.30 * 2.5); // distance (m) -> flight time (s)
+    ballFlightTimeMap.put(2.8, 0.35 * 2.5);
+    ballFlightTimeMap.put(3.1, 0.40 * 2.5);
+    ballFlightTimeMap.put(3.4, 0.45 * 2.5);
+    ballFlightTimeMap.put(3.7, 0.50 * 2.5);
+    ballFlightTimeMap.put(4.0, 0.55 * 2.5);
+    ballFlightTimeMap.put(4.3, 0.60 * 2.5);
+    ballFlightTimeMap.put(4.6, 0.65 * 2.5);
+    ballFlightTimeMap.put(5.3, 0.75 * 2.5);
   }
 
   public TurretSubsystem(
@@ -112,12 +114,12 @@ public class TurretSubsystem extends SubsystemBase {
     config.MotionMagic.MotionMagicAcceleration =
         MAX_ACCELERATION_IN_DEG_PER_SEC / 360.0; // 2.78 rps^2
 
-    config.Slot0.kP = 60.0; // lower by a lot maybe
+    config.Slot0.kP = 67.0; // lower by a lot maybe 60
     config.Slot0.kI = 0.0;
-    config.Slot0.kD = 0.63;
+    config.Slot0.kD = 0.0;
     config.Slot0.kS = 0.2;
-    config.Slot0.kV = 0.754;
-    config.Slot0.kA = 0.126;
+    config.Slot0.kV = 0.117;
+    config.Slot0.kA = 0.0;
 
     config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
     config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = MAX_ANGLE / 360.0; // 2.0 rotations
@@ -126,7 +128,7 @@ public class TurretSubsystem extends SubsystemBase {
 
     turretMotor.getConfigurator().apply(config);
     turretMotor.setPosition(0 / 360.0);
-    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(turretMotor);
+    // com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(turretMotor);
   }
 
   @Override
@@ -162,8 +164,9 @@ public class TurretSubsystem extends SubsystemBase {
 
     double currentPositionDeg = getAbsolutePositionDeg();
 
-    // Update shooter and hood with current distance to hub
-    double distanceToHub = getDistanceFromHub(robotPose);
+    // Update shooter and hood with predicted distance (accounts for robot motion)
+    double distanceToHub =
+        predictedDistanceToHub > 0.01 ? predictedDistanceToHub : getDistanceFromHub(robotPose);
     ShooterSubsystem.getInstance().setTargetDistance(distanceToHub);
     HoodSubsystem.getInstance().setTargetDistance(distanceToHub);
     //    System.out.println(Units.metersToInches(distanceToHub));
@@ -173,6 +176,25 @@ public class TurretSubsystem extends SubsystemBase {
     HoodSubsystem.getInstance().setRobotPosex(robotPose.getX());
 
     updateTargetPose();
+
+    // ── VISION TRACK OVERRIDE ──────────────────────────────────────────────
+    // Turret follows TX from limelight-under (fixed on robot chassis, not turret).
+    // TX = angle from camera to target. Convert to turret-relative angle.
+    // Adjust sign/offset below to match your camera mounting direction.
+    if (visionTrackOverride) {
+      boolean hasTarget = LimelightHelpers.getTV("limelight-under");
+      if (hasTarget) {
+        double tx = LimelightHelpers.getTX("limelight-under");
+        double turretAngleDeg = -tx;
+        targetAngle = Rotation2d.fromDegrees(MathUtil.clamp(turretAngleDeg, MIN_ANGLE, MAX_ANGLE));
+      }
+      // no target: hold last targetAngle
+      double targetRotations = targetAngle.getDegrees() / 360.0;
+      turretMotor.setControl(motionMagicRequest.withPosition(targetRotations));
+      return;
+    }
+    // ── END VISION TRACK OVERRIDE ──────────────────────────────────────────
+
     double goalRad =
         calculateTurretgoalRad(robotPose, robotFieldVelocity, chassisSpeeds.omegaRadiansPerSecond);
 
@@ -340,6 +362,14 @@ public class TurretSubsystem extends SubsystemBase {
     return positionError < 3.0 && !isUnwinding && !wrappingAround && !atSoftLimit;
   }
 
+  public void setVisionTrackOverride(boolean enable) {
+    visionTrackOverride = enable;
+  }
+
+  public boolean getVisionTrackOverride() {
+    return visionTrackOverride;
+  }
+
   // for passing
   public boolean isLooselyOnTarget() {
     double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
@@ -377,26 +407,82 @@ public class TurretSubsystem extends SubsystemBase {
   // To swap: comment out one calculateTurretgoalRad, uncomment the other.
 
   // ── OPTION A: Original angular + translational lead — ACTIVE ──
+  //  public double calculateTurretgoalRad(
+  //      Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
+  //    // base turret angle robot relative poointing towards hub
+  //    Translation2d turretPose =
+  //        robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
+  //    Translation2d toTargetPose = targetPose.minus(turretPose);
+  //    double fieldAngle = Math.atan2(toTargetPose.getY(), toTargetPose.getX());
+  //    double angle =
+  //        MathUtil.angleModulus(
+  //            fieldAngle - robotPose.getRotation().getRadians() - TURRET_FORWARD_OFFSET_RAD);
+  //    angle = applyAngularLead(angle, robotOmega, robotPose);
+  //
+  //    angle =
+  //        applyTranslationalLead(
+  //            angle,
+  //            robotVelocity,
+  //            robotOmega,
+  //            robotPose.getRotation(),
+  //            targetPose.minus(
+  //
+  // robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()))));
+  //
+  //    if (isVisionTrustworthy(
+  //        limelightTable.getEntry("tx").getDouble(0.0),
+  //        Math.toRadians(getVelocityDegPerSec()),
+  //        robotOmega,
+  //        getDistanceFromHub(robotPose),
+  //        limelightTable.getEntry("tid").getDouble(0))) {
+  //      angle =
+  //          applyVisionCorrection(
+  //              angle,
+  //              limelightTable.getEntry("tx").getDouble(0.0),
+  //              Math.toRadians(getVelocityDegPerSec()));
+  //    }
+  //
+  //    double clampedAngle =
+  //        MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
+  //    atSoftLimit = Math.abs(clampedAngle - angle) > Math.toRadians(1.0);
+  //    return clampedAngle;
+  //  }
+
+  // ── OPTION B: Iterative convergence lead — INACTIVE ──
+  private static final int LEAD_ITERATIONS = 3;
+
   public double calculateTurretgoalRad(
       Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
-    // base turret angle robot relative poointing towards hub
-    Translation2d turretPose =
-        robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
-    Translation2d toTargetPose = targetPose.minus(turretPose);
-    double fieldAngle = Math.atan2(toTargetPose.getY(), toTargetPose.getX());
+    // predict where robot will be when ball arrives, aim from there, repeat
+    double t = 0.0;
+
+    for (int i = 0; i < LEAD_ITERATIONS; i++) {
+      double futureX = robotPose.getX() + robotVelocity.getX() * t;
+      double futureY = robotPose.getY() + robotVelocity.getY() * t;
+      double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
+      Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
+
+      Translation2d futureTurretPose =
+          new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
+      double distance = targetPose.minus(futureTurretPose).getNorm();
+      t = ballFlightTimeMap.get(Math.max(distance, 2.5));
+    }
+
+    double futureX = robotPose.getX() + robotVelocity.getX() * t;
+    double futureY = robotPose.getY() + robotVelocity.getY() * t;
+    double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
+    Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
+
+    Translation2d futureTurretPose =
+        new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
+    Translation2d toTarget = targetPose.minus(futureTurretPose);
+    predictedDistanceToHub = toTarget.getNorm();
+    double fieldAngle = Math.atan2(toTarget.getY(), toTarget.getX());
+
+    // robot-relative using CURRENT heading (turret is on the current robot)
     double angle =
         MathUtil.angleModulus(
             fieldAngle - robotPose.getRotation().getRadians() - TURRET_FORWARD_OFFSET_RAD);
-    angle = applyAngularLead(angle, robotOmega, robotPose);
-
-    angle =
-        applyTranslationalLead(
-            angle,
-            robotVelocity,
-            robotOmega,
-            robotPose.getRotation(),
-            targetPose.minus(
-                robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()))));
 
     if (isVisionTrustworthy(
         limelightTable.getEntry("tx").getDouble(0.0),
@@ -411,63 +497,9 @@ public class TurretSubsystem extends SubsystemBase {
               Math.toRadians(getVelocityDegPerSec()));
     }
 
-    double clampedAngle =
-        MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
-    atSoftLimit = Math.abs(clampedAngle - angle) > Math.toRadians(1.0);
-    return clampedAngle;
+    angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
+    return angle;
   }
-
-  // ── OPTION B: Iterative convergence lead — INACTIVE ──
-  // private static final int LEAD_ITERATIONS = 3;
-  //
-  // public double calculateTurretgoalRad(
-  //     Pose2d robotPose, Translation2d robotVelocity, double robotOmega) {
-  //   // predict where robot will be when ball arrives, aim from there, repeat
-  //   double t = 0.0;
-  //
-  //   for (int i = 0; i < LEAD_ITERATIONS; i++) {
-  //     double futureX = robotPose.getX() + robotVelocity.getX() * t;
-  //     double futureY = robotPose.getY() + robotVelocity.getY() * t;
-  //     double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
-  //     Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
-  //
-  //     Translation2d futureTurretPose =
-  //         new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
-  //     double distance = targetPose.minus(futureTurretPose).getNorm();
-  //     t = ballFlightTimeMap.get(Math.max(distance, 2.5));
-  //   }
-  //
-  //   double futureX = robotPose.getX() + robotVelocity.getX() * t;
-  //   double futureY = robotPose.getY() + robotVelocity.getY() * t;
-  //   double futureHeading = robotPose.getRotation().getRadians() + robotOmega * t;
-  //   Rotation2d futureRot = Rotation2d.fromRadians(futureHeading);
-  //
-  //   Translation2d futureTurretPose =
-  //       new Translation2d(futureX, futureY).plus(robotToTurret.rotateBy(futureRot));
-  //   Translation2d toTarget = targetPose.minus(futureTurretPose);
-  //   double fieldAngle = Math.atan2(toTarget.getY(), toTarget.getX());
-  //
-  //   // robot-relative using CURRENT heading (turret is on the current robot)
-  //   double angle =
-  //       MathUtil.angleModulus(
-  //           fieldAngle - robotPose.getRotation().getRadians() - TURRET_FORWARD_OFFSET_RAD);
-  //
-  //   if (isVisionTrustworthy(
-  //       limelightTable.getEntry("tx").getDouble(0.0),
-  //       Math.toRadians(getVelocityDegPerSec()),
-  //       robotOmega,
-  //       getDistanceFromHub(robotPose),
-  //       limelightTable.getEntry("tid").getDouble(0))) {
-  //     angle =
-  //         applyVisionCorrection(
-  //             angle,
-  //             limelightTable.getEntry("tx").getDouble(0.0),
-  //             Math.toRadians(getVelocityDegPerSec()));
-  //   }
-  //
-  //   angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
-  //   return angle;
-  // }
   // ── END LEAD MODE SWITCH ──────────────────────────────────────────────
 
   // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past

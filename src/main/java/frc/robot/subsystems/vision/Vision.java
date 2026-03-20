@@ -92,11 +92,19 @@ public class Vision extends SubsystemBase {
 
       // Loop over pose observations
       for (var observation : inputs[cameraIndex].poseObservations) {
+        // Determine single-tag distance limit based on camera type
+        double singleTagLimit =
+            (cameraIndex < cameraStdDevFactors.length && cameraStdDevFactors[cameraIndex] < 1.0)
+                ? maxSingleTagDistanceLL4
+                : maxSingleTagDistance;
+
         // Check whether to reject pose
         boolean rejectPose =
             observation.tagCount() == 0 // Must have at least one tag
                 || (observation.tagCount() == 1
                     && observation.ambiguity() > maxAmbiguity) // Cannot be high ambiguity
+                || (observation.tagCount() == 1
+                    && observation.averageTagDistance() > singleTagLimit) // Single tag too far away
                 || Math.abs(observation.pose().getZ())
                     > maxZError // Must have realistic Z coordinate
 
@@ -120,8 +128,11 @@ public class Vision extends SubsystemBase {
         }
 
         // Calculate standard deviations
-        double stdDevFactor =
-            Math.pow(observation.averageTagDistance(), 2.0) / observation.tagCount();
+        // Scale by distance^1.5 and inversely by tagCount² (6328 uses distance^1.2)
+        // Multi-tag observations are much more trustworthy than single-tag
+        double distFactor = Math.pow(observation.averageTagDistance(), distanceExponent);
+        double tagFactor = Math.pow(observation.tagCount(), 2.0);
+        double stdDevFactor = distFactor / tagFactor;
         double linearStdDev = linearStdDevBaseline * stdDevFactor;
         double angularStdDev = angularStdDevBaseline * stdDevFactor;
         if (observation.type() == PoseObservationType.MEGATAG_2) {
