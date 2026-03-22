@@ -9,12 +9,6 @@
           "data": {
             "commands": [
               {
-                "type": "path",
-                "data": {
-                  "pathName": "testytest"
-                }
-              },
-              {
                 "type": "named",
                 "data": {
                   "name": "spinUpShooter"
@@ -34,11 +28,23 @@
           "data": {
             "name": "overrideShooter"
           }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 7.5
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "rapidFireShooter"
+          }
         }
       ]
     }
   },
-  "resetOdom": true,
+  "resetOdom": false,
   "folder": null,
   "choreoAuto": false
 }

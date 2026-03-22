@@ -3,9 +3,9 @@
   "robotLength": 0.787,
   "holonomicMode": true,
   "pathFolders": [
+    "Choreo",
     "Double Neutral Auto",
     "Double Neutral Bottom Auto",
-    "Choreo",
     "Sean Auton"
   ],
   "autoFolders": [],
@@ -33,5 +33,7 @@
   "brModuleY": -0.279,
   "bumperOffsetX": 0.0,
   "bumperOffsetY": 0.0,
-  "robotFeatures": []
+  "robotFeatures": [
+    "{\"name\":\"Intaker\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":0.55,\"y\":0.0},\"size\":{\"width\":0.787,\"length\":0.305},\"borderRadius\":0.1,\"strokeWidth\":0.025,\"filled\":false}}"
+  ]
 }
