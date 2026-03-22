@@ -78,4 +78,10 @@ public class FieldConstants {
       new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH + WALLWIDTH + BUMPWIDTH, new Rotation2d());
   public static Pose2d BOTTOMRIGHTBUMP =
       new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH + WALLWIDTH, new Rotation2d());
+
+  // midpoint of bump zone for passing targets when on opposite alliance
+  public static final Pose2d TOPBUMPMID =
+      new Pose2d(0, FIELDWIDTH - TRENCHWIDTH - WALLWIDTH - BUMPWIDTH / 2.0, new Rotation2d());
+  public static final Pose2d BOTTOMBUMPMID =
+      new Pose2d(0, TRENCHWIDTH + WALLWIDTH + BUMPWIDTH / 2.0, new Rotation2d());
 }

@@ -48,13 +48,13 @@ public class DriverViewSelector {
           new CameraInfo(
               "limelight-left",
               "http://limelight-left.local:5800/stream.mjpg",
-              11.75, // 11.75° left of forward
+              45, // 11.75° left of forward
               LL3_FOV_DEG,
               false),
           new CameraInfo(
               "limelight-right",
               "http://limelight-right.local:5800/stream.mjpg",
-              -11.75, // 11.75° right of forward
+              -45, // 11.75° right of forward
               LL3_FOV_DEG,
               false),
           new CameraInfo(

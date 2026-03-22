@@ -43,14 +43,13 @@ public class TurretSubsystem extends SubsystemBase {
   private double predictedDistanceToHub = 0.0;
 
   private static final Translation2d robotToTurret =
-      new Translation2d(Units.inchesToMeters(-8.5), 0);
-
+      new Translation2d(Units.inchesToMeters(-5.875), 0);
   private final TalonFX turretMotor = new TalonFX(20);
   private final MotionMagicVoltage motionMagicRequest =
       new MotionMagicVoltage(0).withEnableFOC(true);
 
-  private static final double MAX_ANGLE = 90;
-  private static final double MIN_ANGLE = -90;
+  private static final double MAX_ANGLE = 125;
+  private static final double MIN_ANGLE = -125;
   private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 38279.9988;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 15000;
@@ -64,6 +63,7 @@ public class TurretSubsystem extends SubsystemBase {
   private boolean wrappingAround;
   private boolean atSoftLimit = false;
   private boolean visionTrackOverride = false;
+  private double turretManualOffsetDeg = 0.0;
 
   private double lastTimeAtGoal = 0;
 
@@ -213,10 +213,14 @@ public class TurretSubsystem extends SubsystemBase {
       targetAngle = findBestTarget(Rotation2d.fromRadians(goalRad), currentPositionDeg);
     }
 
-    targetAngle =
-        Rotation2d.fromDegrees(MathUtil.clamp(targetAngle.getDegrees(), MIN_ANGLE, MAX_ANGLE));
+    double offsetDeg = targetAngle.getDegrees() + turretManualOffsetDeg;
+    targetAngle = Rotation2d.fromDegrees(MathUtil.clamp(offsetDeg, MIN_ANGLE, MAX_ANGLE));
     double targetRotations = targetAngle.getDegrees() / 360.0;
-    turretMotor.setControl(motionMagicRequest.withPosition(targetRotations));
+//    turretMotor.setControl(
+//        motionMagicRequest.withPosition(targetRotations)); // change back for turret to work
+
+    org.littletonrobotics.junction.Logger.recordOutput(
+        "Turret/ManualOffsetDeg", turretManualOffsetDeg);
   }
 
   private Rotation2d findBestTarget(Rotation2d fieldRelativeTarget, double currentAbsoluteDeg) {
@@ -370,6 +374,18 @@ public class TurretSubsystem extends SubsystemBase {
     return visionTrackOverride;
   }
 
+  public void setTurretManualOffset(double deg) {
+    turretManualOffsetDeg = MathUtil.clamp(deg, -17.0, 17.0);
+  }
+
+  public void resetTurretManualOffset() {
+    turretManualOffsetDeg = 0.0;
+  }
+
+  public double getTurretManualOffset() {
+    return turretManualOffsetDeg;
+  }
+
   // for passing
   public boolean isLooselyOnTarget() {
     double positionError = Math.abs(targetAngle.getDegrees() - getAbsolutePositionDeg());
@@ -502,31 +518,59 @@ public class TurretSubsystem extends SubsystemBase {
   }
   // ── END LEAD MODE SWITCH ──────────────────────────────────────────────
 
-  // TODO: maybe make it so it cant shoot in the middle, and switch to the middle of bump when past
-  // mid
   public void updateTargetPose() {
     Translation2d hubPos = getHubPosition();
-    Translation2d topTarget = AllianceFlipUtil.apply(FieldConstants.TOPTARGET.getTranslation());
-    Translation2d bottomTarget =
-        AllianceFlipUtil.apply(FieldConstants.BOTTOMTARGET.getTranslation());
+
+    // Our wall and opponent wall X in blue-origin coords
+    double ourWallX = AllianceFlipUtil.shouldFlip() ? FieldConstants.FIELDLENGTH : 0.0;
+    double opponentWallX = AllianceFlipUtil.shouldFlip() ? 0.0 : FieldConstants.FIELDLENGTH;
+
+    // Our bumps (pass toward our alliance wall) vs opponent bumps (pass away from hub)
+    Translation2d topOurBump = new Translation2d(ourWallX, FieldConstants.TOPBUMPMID.getY());
+    Translation2d bottomOurBump = new Translation2d(ourWallX, FieldConstants.BOTTOMBUMPMID.getY());
+    Translation2d topOpponentBump =
+        new Translation2d(opponentWallX, FieldConstants.TOPBUMPMID.getY());
+    Translation2d bottomOpponentBump =
+        new Translation2d(opponentWallX, FieldConstants.BOTTOMBUMPMID.getY());
+
+    // Three zones: alliance, middle, opponent's side
+    // Alliance zone boundary: our hub
+    // Opponent zone boundary: opponent's hub (mirrored)
+    double ourHubX =
+        AllianceFlipUtil.shouldFlip()
+            ? FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB
+            : FieldConstants.ALLIANCEWALLTOHUB;
+    double opponentHubX =
+        AllianceFlipUtil.shouldFlip()
+            ? FieldConstants.ALLIANCEWALLTOHUB
+            : FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
 
     boolean inAllianceZone;
+    boolean onOpponentSide;
     if (AllianceFlipUtil.shouldFlip()) {
-      inAllianceZone =
-          robotPose.getX() > FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+      inAllianceZone = robotPose.getX() > ourHubX;
+      onOpponentSide = robotPose.getX() < opponentHubX;
     } else {
-      inAllianceZone = robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB;
+      inAllianceZone = robotPose.getX() < ourHubX;
+      onOpponentSide = robotPose.getX() > opponentHubX;
     }
 
-    if (!inAllianceZone) {
-      // in mid — target bumps to pass fuel to our side
-      if (robotPose.getY() > FieldConstants.FIELDWIDTH / 2) {
-        targetPose = topTarget;
-      } else {
-        targetPose = bottomTarget;
-      }
-    } else {
+    boolean topHalf = robotPose.getY() > FieldConstants.FIELDWIDTH / 2;
+
+    if (inAllianceZone) {
       targetPose = hubPos;
+    } else if (onOpponentSide) {
+      // Hub blocks line-of-sight to our bumps — aim at opponent's bumps
+      targetPose = topHalf ? topOpponentBump : bottomOpponentBump;
+    } else {
+      // Middle — aim at depot if on depot side, otherwise our bump
+      Translation2d depotPos = AllianceFlipUtil.apply(FieldConstants.DEPOTPOSE.getTranslation());
+      boolean depotIsTopHalf = !AllianceFlipUtil.shouldFlip();
+      if (topHalf == depotIsTopHalf) {
+        targetPose = depotPos;
+      } else {
+        targetPose = topHalf ? topOurBump : bottomOurBump;
+      }
     }
   }
 }

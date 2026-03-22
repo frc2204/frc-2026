@@ -6,15 +6,17 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.FieldConstants;
 import frc.robot.util.geometry.AllianceFlipUtil;
+import org.littletonrobotics.junction.Logger;
 
 public class HoodSubsystem extends SubsystemBase {
 
-  private static final HoodSubsystem INSTANCE = new HoodSubsystem();
+  private static final HoodSubsystem INSTANCE;
 
   public static HoodSubsystem getInstance() {
     return INSTANCE;
@@ -23,7 +25,7 @@ public class HoodSubsystem extends SubsystemBase {
   private static final int HOOD_MOTOR_ID = 22; // tune
   private static final double GEAR_RATIO = 6.0; // tune
 
-  private static final double FORWARD_SOFT_LIMIT = 1.75; // tunemax hood angle
+  private static final double FORWARD_SOFT_LIMIT = 2.0; // tunemax hood angle
   private static final double REVERSE_SOFT_LIMIT = 0.0; // tune min hood angle
 
   private static final double kP = 10.0; // tune
@@ -38,6 +40,16 @@ public class HoodSubsystem extends SubsystemBase {
   private static final InterpolatingDoubleTreeMap hoodAngleMap = new InterpolatingDoubleTreeMap();
 
   private double robotPoseX = 0;
+  private double targetDistance = 0.0;
+
+  // ── LIVE TRIM ─────────────────────────────────────────────────────────────
+  private double globalHoodTrim = 0.0;
+  private final InterpolatingDoubleTreeMap hoodTrimOverlay = new InterpolatingDoubleTreeMap();
+
+  private static final double[] DISTANCE_KEYS = {
+    1.320, 1.573, 1.723, 2.002, 2.250, 2.514, 2.750, 3.000, 3.250, 3.500, 3.730, 4.000, 4.250,
+    4.500, 4.750, 5.000
+  };
 
   static {
     // distance (m) -> hood position (rotations)
@@ -57,11 +69,15 @@ public class HoodSubsystem extends SubsystemBase {
     hoodAngleMap.put(4.500, 220.0 / 360.0);
     hoodAngleMap.put(4.750, 230.0 / 360.0);
     hoodAngleMap.put(5.000, 240.0 / 360.0);
+    INSTANCE = new HoodSubsystem();
   }
 
   private double targetPositionRotations = 0.0;
 
   private HoodSubsystem() {
+    for (double key : DISTANCE_KEYS) {
+      hoodTrimOverlay.put(key, 0.0);
+    }
     SmartDashboard.putNumber("Target Angle", 0.0);
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
@@ -93,16 +109,17 @@ public class HoodSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    if (AllianceFlipUtil.applyX(robotPoseX) > 3.0 // 3.5
-        && AllianceFlipUtil.applyX(robotPoseX) < 6) { // 5.5
-      hoodMotor.setControl(
-          positionRequest.withPosition(
-              0.0)); // lolwer hood when  approaching trench TODO: make it only go down when
-      // robottoturret, not just robot pose, and tune
-    } else if (AllianceFlipUtil.applyX(robotPoseX) < FieldConstants.FIELDLENGTH - 3.0
-        && AllianceFlipUtil.applyX(robotPoseX) > FieldConstants.FIELDLENGTH - 6.0) {
+    double allianceX = AllianceFlipUtil.applyX(robotPoseX);
+    boolean trenchMode = false;
+
+    if (allianceX > 2 && allianceX < 7) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
-    } else if (AllianceFlipUtil.applyX(robotPoseX) > 6.0) {
+      trenchMode = true;
+    } else if (allianceX < FieldConstants.FIELDLENGTH - 2.5
+        && allianceX > FieldConstants.FIELDLENGTH - 6.5) {
+      hoodMotor.setControl(positionRequest.withPosition(0.0));
+      trenchMode = true;
+    } else if (allianceX > 6.5) {
       hoodMotor.setControl(
           positionRequest.withPosition(
               FORWARD_SOFT_LIMIT
@@ -111,15 +128,23 @@ public class HoodSubsystem extends SubsystemBase {
       hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
     }
 
+    Logger.recordOutput("Hood/RobotPoseX", robotPoseX);
+    Logger.recordOutput("Hood/AllianceRelativeX", allianceX);
+    Logger.recordOutput("Hood/TrenchMode", trenchMode);
+    Logger.recordOutput("Hood/GlobalHoodTrim", globalHoodTrim);
+    Logger.recordOutput("Hood/PerDistHoodTrim", hoodTrimOverlay.get(targetDistance));
+
     // if shooter is tracking human tehe then
     //    hoodMotor.setControl(positionRequest.withPosition(FORWARD_SOFT_LIMIT - 0.05));
   }
 
   public void setTargetDistance(double distanceMeters) {
-    targetPositionRotations = hoodAngleMap.get(distanceMeters);
-    //    targetPositionRotations =
-    //        SmartDashboard.getNumber("Target Angle", 0.0) / 360.0; // convert from degrees to
-    // rotations
+    targetDistance = distanceMeters;
+    targetPositionRotations =
+        MathUtil.clamp(
+            hoodAngleMap.get(distanceMeters) + hoodTrimOverlay.get(distanceMeters) + globalHoodTrim,
+            0.0,
+            FORWARD_SOFT_LIMIT);
   }
 
   public void setRobotPosex(double xMeters) {
@@ -136,5 +161,43 @@ public class HoodSubsystem extends SubsystemBase {
 
   public boolean atTarget() {
     return Math.abs(getPosition() - targetPositionRotations) < 50.0 / 360.0; // tune
+  }
+
+  // ── TRIM HELPERS ───────────────────────────────────────────────────────
+  public double getTargetDistance() {
+    return targetDistance;
+  }
+
+  private double getNearestKey(double distance) {
+    double nearest = DISTANCE_KEYS[0];
+    double minDiff = Math.abs(distance - nearest);
+    for (double key : DISTANCE_KEYS) {
+      double diff = Math.abs(distance - key);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearest = key;
+      }
+    }
+    return nearest;
+  }
+
+  public void adjustHoodTrimAtDistance(double distance, double delta) {
+    double key = getNearestKey(distance);
+    hoodTrimOverlay.put(key, hoodTrimOverlay.get(key) + delta);
+  }
+
+  public void adjustGlobalHoodTrim(double delta) {
+    globalHoodTrim += delta;
+  }
+
+  public void resetHoodTrim() {
+    globalHoodTrim = 0.0;
+    for (double key : DISTANCE_KEYS) {
+      hoodTrimOverlay.put(key, 0.0);
+    }
+  }
+
+  public double getGlobalHoodTrim() {
+    return globalHoodTrim;
   }
 }

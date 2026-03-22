@@ -113,8 +113,8 @@ public class ModuleIOTalonFX implements ModuleIO {
     driveConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
     driveConfig.CurrentLimits.SupplyCurrentLimit = 40.0;
     driveConfig.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
-    driveConfig.CurrentLimits.SupplyCurrentLowerTime = 2.0;
-    driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.25;
+    driveConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.15;
     driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.15;
     driveConfig.MotorOutput.Inverted =
         constants.DriveMotorInverted
