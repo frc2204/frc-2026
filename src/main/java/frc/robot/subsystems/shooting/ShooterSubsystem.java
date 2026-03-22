@@ -17,7 +17,7 @@ import frc.robot.subsystems.handoff.HandoffSubsystem;
 import org.littletonrobotics.junction.Logger;
 
 public class ShooterSubsystem extends SubsystemBase {
-  private static final ShooterSubsystem INSTANCE = new ShooterSubsystem();
+  private static final ShooterSubsystem INSTANCE;
 
   public static ShooterSubsystem getInstance() {
     return INSTANCE;
@@ -99,6 +99,15 @@ public class ShooterSubsystem extends SubsystemBase {
   private final double rpmAccurateTolerance = 150;
   private final double passingTolerance = 500; // tune
 
+  // ── LIVE TRIM ─────────────────────────────────────────────────────────────
+  private double globalRpmTrim = 0.0;
+  private final InterpolatingDoubleTreeMap rpmTrimOverlay = new InterpolatingDoubleTreeMap();
+
+  private static final double[] DISTANCE_KEYS = {
+    1.320, 1.573, 1.723, 2.002, 2.250, 2.514, 2.750, 3.000, 3.250, 3.500, 3.730, 4.000, 4.250,
+    4.500, 4.750, 5.000
+  };
+
   private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // rps
 
   private final VelocityTorqueCurrentFOC velocityRequest = new VelocityTorqueCurrentFOC(0);
@@ -125,12 +134,13 @@ public class ShooterSubsystem extends SubsystemBase {
     shotFlywheelSpeedMap.put(4.500, 3250.0);
     shotFlywheelSpeedMap.put(4.750, 3350.0);
     shotFlywheelSpeedMap.put(5.000, 3415.0);
+    INSTANCE = new ShooterSubsystem();
   }
 
   private ShooterSubsystem() {
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
 
     // 70a burst for 1.5s drop to 35a sustained
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
@@ -159,7 +169,7 @@ public class ShooterSubsystem extends SubsystemBase {
     // follower
     var config2 = new TalonFXConfiguration();
     config2.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-    config2.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+    config2.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
     config2.CurrentLimits.SupplyCurrentLimitEnable = true;
     config2.CurrentLimits.SupplyCurrentLimit = 45.0;
     config2.CurrentLimits.SupplyCurrentLowerLimit = 35.0;
@@ -171,6 +181,10 @@ public class ShooterSubsystem extends SubsystemBase {
     // com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(
     //     shooterMotor, shooterMotor2);
 
+    for (double key : DISTANCE_KEYS) {
+      rpmTrimOverlay.put(key, 0.0);
+    }
+
     SmartDashboard.putNumber("Target Speed", 0.0);
   }
 
@@ -180,7 +194,7 @@ public class ShooterSubsystem extends SubsystemBase {
 
     double baseRPM = shotFlywheelSpeedMap.get(distance);
     //    double baseRPM = SmartDashboard.getNumber("Target Speed", 0.0);
-    double targetRPM = baseRPM * overspinFactor;
+    double targetRPM = (baseRPM + rpmTrimOverlay.get(distance) + globalRpmTrim) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
 
     double targetRPS = targetRPM / 60.0;
@@ -259,6 +273,8 @@ public class ShooterSubsystem extends SubsystemBase {
     Logger.recordOutput("Shooter/AtGoalSpeed", isAtGoalSpeed());
     Logger.recordOutput("Shooter/BeamBreakPredicting", beamBreakPredicting);
     Logger.recordOutput("Shooter/DistanceM", distance);
+    Logger.recordOutput("Shooter/GlobalRpmTrim", globalRpmTrim);
+    Logger.recordOutput("Shooter/PerDistRpmTrim", rpmTrimOverlay.get(distance));
     Logger.recordOutput(
         "Shooter/SupplyCurrent", shooterMotor.getSupplyCurrent().getValueAsDouble());
     Logger.recordOutput(
@@ -283,7 +299,9 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public boolean isAtGoalSpeed() {
     double distance = getTargetDistance();
-    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    double targetRPM =
+        (shotFlywheelSpeedMap.get(distance) + rpmTrimOverlay.get(distance) + globalRpmTrim)
+            * overspinFactor;
     //    double targetRPM = SmartDashboard.getNumber("Target Speed", 0.0) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
     if (state == ShooterState.PASSING) {
@@ -296,7 +314,9 @@ public class ShooterSubsystem extends SubsystemBase {
 
   public boolean isAtGoalSpeedAccurate() {
     double distance = getTargetDistance();
-    double targetRPM = shotFlywheelSpeedMap.get(distance) * overspinFactor;
+    double targetRPM =
+        (shotFlywheelSpeedMap.get(distance) + rpmTrimOverlay.get(distance) + globalRpmTrim)
+            * overspinFactor;
     //    double targetRPM = SmartDashboard.getNumber("Target Speed", 0.0) * overspinFactor;
     double currentRPM = getVelocityRevPerSec() * 60.0;
     return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
@@ -308,8 +328,42 @@ public class ShooterSubsystem extends SubsystemBase {
     targetDistance = distance;
   }
 
-  private double getTargetDistance() {
+  public double getTargetDistance() {
     return targetDistance;
+  }
+
+  // ── TRIM HELPERS ───────────────────────────────────────────────────────
+  private double getNearestKey(double distance) {
+    double nearest = DISTANCE_KEYS[0];
+    double minDiff = Math.abs(distance - nearest);
+    for (double key : DISTANCE_KEYS) {
+      double diff = Math.abs(distance - key);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearest = key;
+      }
+    }
+    return nearest;
+  }
+
+  public void adjustRpmTrimAtDistance(double distance, double deltaRPM) {
+    double key = getNearestKey(distance);
+    rpmTrimOverlay.put(key, rpmTrimOverlay.get(key) + deltaRPM);
+  }
+
+  public void adjustGlobalRpmTrim(double deltaRPM) {
+    globalRpmTrim += deltaRPM;
+  }
+
+  public void resetRpmTrim() {
+    globalRpmTrim = 0.0;
+    for (double key : DISTANCE_KEYS) {
+      rpmTrimOverlay.put(key, 0.0);
+    }
+  }
+
+  public double getGlobalRpmTrim() {
+    return globalRpmTrim;
   }
 
   public void onEnable() {
