@@ -52,7 +52,7 @@ public class HandoffSubsystem extends SubsystemBase {
   private HandoffSubsystem() {
     TalonFXConfiguration config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-    config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     config.CurrentLimits.StatorCurrentLimitEnable = true;
     config.CurrentLimits.StatorCurrentLimit = 60;
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
