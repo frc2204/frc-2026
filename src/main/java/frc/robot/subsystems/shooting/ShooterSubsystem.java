@@ -221,9 +221,10 @@ public class ShooterSubsystem extends SubsystemBase {
       case RAPID_FIRE_ACCURATE:
         // slot 1 if beam break or rpm error exceeds threshold
         double error = Math.abs(targetRPS - currentRPS);
+        // Convert rpmRapidFireTolerance to RPS so both sides of the comparison use the same units.
         boolean useRecovery =
             (beamBreakPredicting || error > RECOVERY_THRESHOLD_RPS)
-                && error > rpmRapidFireTolerance;
+                && error > rpmRapidFireTolerance / 60.0;
         activeSlot = useRecovery ? 1 : 0;
         shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(activeSlot));
         break;
@@ -302,7 +303,8 @@ public class ShooterSubsystem extends SubsystemBase {
     return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
   }
 
-  private double targetDistance = 0.0;
+  // Start at minimum map key so the interpolation lookup is always valid before turret sets a real distance.
+  private double targetDistance = 1.320;
 
   public void setTargetDistance(double distance) {
     targetDistance = distance;
