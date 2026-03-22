@@ -25,6 +25,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.AdaptiveAutoCommand;
@@ -71,9 +72,9 @@ public class RobotContainer {
   private final frc.robot.util.DriverViewSelector driverView;
   private final PowerDistribution pdh = new PowerDistribution(45, ModuleType.kRev);
 
-  // Controller
+  // Controllers
   private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
-  //  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(1);
+  private final CommandXboxController xboxController = new CommandXboxController(1);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
@@ -439,6 +440,94 @@ public class RobotContainer {
             Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
         .onFalse(
             Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
+
+    // ── XBOX CONTROLLER (port 1) — operator live tuning ──────────────────
+    // Y: +25 RPM at nearest distance point
+    xboxController
+        .y()
+        .onTrue(
+            Commands.runOnce(
+                () -> shooter.adjustRpmTrimAtDistance(shooter.getTargetDistance(), 25.0), shooter));
+
+    // A: -25 RPM at nearest distance point
+    xboxController
+        .a()
+        .onTrue(
+            Commands.runOnce(
+                () -> shooter.adjustRpmTrimAtDistance(shooter.getTargetDistance(), -25.0),
+                shooter));
+
+    // Right Trigger: +25 RPM global (all distances)
+    xboxController
+        .rightTrigger(0.5)
+        .onTrue(Commands.runOnce(() -> shooter.adjustGlobalRpmTrim(25.0), shooter));
+
+    // Left Trigger: -25 RPM global (all distances)
+    xboxController
+        .leftTrigger(0.5)
+        .onTrue(Commands.runOnce(() -> shooter.adjustGlobalRpmTrim(-25.0), shooter));
+
+    // POV Up: hood +0.014 rotations (~5°) at nearest distance point
+    xboxController
+        .povUp()
+        .onTrue(
+            Commands.runOnce(
+                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), 0.014), shooter));
+
+    // POV Down: hood -0.014 rotations (~5°) at nearest distance point
+    xboxController
+        .povDown()
+        .onTrue(
+            Commands.runOnce(
+                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), -0.014), shooter));
+
+    // Right Bumper: hood +0.014 rotations global
+    xboxController
+        .rightBumper()
+        .onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(0.014), hood));
+
+    // Left Bumper: hood -0.014 rotations global
+    xboxController
+        .leftBumper()
+        .onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(-0.014), hood));
+
+    // Left Stick X: turret offset ±17° (position-based, centered = 0)
+    new Trigger(() -> Math.abs(xboxController.getLeftX()) > 0.1)
+        .whileTrue(
+            Commands.run(
+                () -> turret.setTurretManualOffset(xboxController.getLeftX() * 17.0), turret))
+        .onFalse(Commands.runOnce(() -> turret.resetTurretManualOffset(), turret));
+
+    // Right Stick Y: manual intake deploy position control
+    new Trigger(() -> Math.abs(xboxController.getRightY()) > 0.1)
+        .whileTrue(
+            Commands.run(
+                () -> {
+                  intake.setState(IntakeSubsystem.IntakeState.MANUAL);
+                  intake.setManualVoltage(-xboxController.getRightY() * 4.0); // tune voltage
+                },
+                intake))
+        .onFalse(
+            Commands.runOnce(
+                () -> {
+                  intake.setManualVoltage(0.0);
+                  intake.stow();
+                },
+                intake));
+
+    // Back: reset all trims
+    xboxController
+        .back()
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  shooter.resetRpmTrim();
+                  hood.resetHoodTrim();
+                  turret.resetTurretManualOffset();
+                },
+                shooter,
+                hood,
+                turret));
   }
 
   /**
@@ -481,6 +570,13 @@ public class RobotContainer {
     // Shooter
     SmartDashboard.putString("Shooter/State", shooter.getState().name());
     SmartDashboard.putBoolean("Shooter/At Speed", shooter.isAtGoalSpeed());
+    SmartDashboard.putNumber("Shooter/GlobalRpmTrim", shooter.getGlobalRpmTrim());
+
+    // Hood trim
+    SmartDashboard.putNumber("Hood/GlobalHoodTrim", hood.getGlobalHoodTrim());
+
+    // Turret trim
+    SmartDashboard.putNumber("Turret/ManualOffset", turret.getTurretManualOffset());
 
     // Hub shift timing
     HubShiftUtil.ShiftInfo shiftInfo = HubShiftUtil.getOfficialShiftInfo();
@@ -528,6 +624,10 @@ public class RobotContainer {
     }
   }
 
+  public Drive getDrive() {
+    return drive;
+  }
+
   public TurretSubsystem getTurret() {
     return turret;
   }
@@ -538,8 +638,10 @@ public class RobotContainer {
     return getShootingSpeedFactor();
   }
 
-  // returns from 0.3 to 1, depending on how close we are to hub, if we close then 0.3, if we far
-  // then 1
+  // right now try with just a constant speed like slowfactor untill shooting on the move is
+  // better??
+
+  // returns from 0.3 to 0.8 when in alliance zone (shooting at hub), 1.0 otherwise
   private double getShootingSpeedFactor() {
     boolean shooting = ps5Controller.R2().getAsBoolean() || ps5Controller.L2().getAsBoolean();
     if (!shooting) return 1.0;
@@ -547,20 +649,21 @@ public class RobotContainer {
     Pose2d pose = drive.getPose();
     double hubDist;
     if (AllianceFlipUtil.shouldFlip()) {
-      // red aliacn so hub is near x = FIELDLENGTH - ALLIANCEWALLTOHUB
+      // red alliance so hub is near x = FIELDLENGTH - ALLIANCEWALLTOHUB
       double hubX = FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
-      if (pose.getX() < hubX) return 1.0; // not in alliance zone
+      if (pose.getX() < hubX) return 1.0; // not in alliance zone, full speed
       hubDist = pose.getX() - hubX;
     } else {
       // blue hub is near x = ALLIANCEWALLTOHUB
       double hubX = FieldConstants.ALLIANCEWALLTOHUB;
-      if (pose.getX() > hubX) return 1.0; // not in alliance zone
+      if (pose.getX() > hubX) return 1.0; // not in alliance zone, full speed
       hubDist = hubX - pose.getX();
     }
 
     double minSpeed = 0.3; // tune: speed when right at hub
-    double maxDist = FieldConstants.ALLIANCEWALLTOHUB; // tune: distance at which full speed
-    double factor = minSpeed + (1.0 - minSpeed) * Math.min(hubDist / maxDist, 1.0);
+    double maxSpeed = 0.8; // tune: cap speed even at edge of alliance zone
+    double maxDist = FieldConstants.ALLIANCEWALLTOHUB;
+    double factor = minSpeed + (maxSpeed - minSpeed) * Math.min(hubDist / maxDist, 1.0);
     return factor;
   }
 }
