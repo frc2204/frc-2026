@@ -115,6 +115,7 @@ public class ModuleIOTalonFX implements ModuleIO {
     driveConfig.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
     driveConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
     driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.15;
+    driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.15;
     driveConfig.MotorOutput.Inverted =
         constants.DriveMotorInverted
             ? InvertedValue.Clockwise_Positive
@@ -273,5 +274,16 @@ public class ModuleIOTalonFX implements ModuleIO {
           case TorqueCurrentFOC -> positionTorqueCurrentRequest.withPosition(
               rotation.getRotations());
         });
+  }
+
+  // TODO: Placeholder values, should work okay
+  @Override
+  public void setDriveSupplyCurrentLimit(double amps) {
+    var config = new com.ctre.phoenix6.configs.CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(amps)
+        .withSupplyCurrentLowerLimit(amps * 0.75)
+        .withSupplyCurrentLowerTime(2.0);
+    driveTalon.getConfigurator().apply(config, 0.01);
   }
 }

@@ -46,6 +46,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Constants;
 import frc.robot.Constants.Mode;
 import frc.robot.generated.TunerConstants;
+import frc.robot.subsystems.shooting.ShooterSubsystem;
 import frc.robot.util.LocalADStarAK;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -89,6 +90,8 @@ public class Drive extends SubsystemBase {
   private final SysIdRoutine sysId;
   private final Alert gyroDisconnectedAlert =
       new Alert("Disconnected gyro, using kinematics as fallback.", AlertType.kError);
+
+  private boolean shooterWasActive = false;
 
   private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
   private final SwerveSetpointGenerator setpointGenerator =
@@ -217,6 +220,21 @@ public class Drive extends SubsystemBase {
 
     // Update gyro alert
     gyroDisconnectedAlert.set(!gyroInputs.connected && Constants.currentMode != Mode.SIM);
+
+    // Lower drive supply current when shooter is spinning up to prevent brownout
+    ShooterSubsystem.ShooterState shooterState = ShooterSubsystem.getInstance().getState();
+    boolean shooterActive =
+        shooterState == ShooterSubsystem.ShooterState.SPIN_UP
+            || shooterState == ShooterSubsystem.ShooterState.RAPID_FIRE
+            || shooterState == ShooterSubsystem.ShooterState.RAPID_FIRE_ACCURATE;
+    if (shooterActive != shooterWasActive) {
+      // TODO: 30.0A & 40.0A are placeholder values!
+      double driveSupplyLimit = shooterActive ? 30.0 : 40.0;
+      for (var module : modules) {
+        module.setDriveSupplyCurrentLimit(driveSupplyLimit);
+      }
+      shooterWasActive = shooterActive;
+    }
   }
 
   /**
