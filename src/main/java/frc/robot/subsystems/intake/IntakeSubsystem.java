@@ -130,8 +130,8 @@ public class IntakeSubsystem extends SubsystemBase {
     //    rollerConfig.CurrentLimits.StatorCurrentLimit = 40; // reduced for Kraken X44
     rollerConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
     rollerConfig.CurrentLimits.SupplyCurrentLimit = 60; // reduced for Kraken X44
-    deployConfig2.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
-    deployConfig2.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    rollerConfig.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    rollerConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
     rollerConfig.Slot0.kS = ROLLER_KS;
     rollerConfig.Slot0.kP = ROLLER_KP;
     rollerConfig.Slot0.kD = ROLLER_KD;
