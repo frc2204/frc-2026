@@ -22,6 +22,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.vision.VisionIO.PoseObservationType;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Vision extends SubsystemBase {
@@ -29,9 +30,15 @@ public class Vision extends SubsystemBase {
   private final VisionIO[] io;
   private final VisionIOInputsAutoLogged[] inputs;
   private final Alert[] disconnectedAlerts;
+  private final DoubleSupplier gyroRateSupplier;
 
   public Vision(VisionConsumer consumer, VisionIO... io) {
+    this(consumer, () -> 0.0, io);
+  }
+
+  public Vision(VisionConsumer consumer, DoubleSupplier gyroRateSupplier, VisionIO... io) {
     this.consumer = consumer;
+    this.gyroRateSupplier = gyroRateSupplier;
     this.io = io;
 
     // Initialize inputs
@@ -143,6 +150,11 @@ public class Vision extends SubsystemBase {
           linearStdDev *= cameraStdDevFactors[cameraIndex];
           angularStdDev *= cameraStdDevFactors[cameraIndex];
         }
+
+        // Scale up stddevs when robot is spinning — camera frames are blurry
+        double omegaFactor = 1.0 + 2.0 * Math.abs(gyroRateSupplier.getAsDouble());
+        linearStdDev *= omegaFactor;
+        angularStdDev *= omegaFactor;
 
         // Send vision observation
         consumer.accept(
