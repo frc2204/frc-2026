@@ -3,25 +3,25 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 3.578620689655173,
-        "y": 7.651271551724138
+        "x": 3.155831325301205,
+        "y": 7.663
       },
       "prevControl": null,
       "nextControl": {
-        "x": 3.8266901676816647,
-        "y": 7.682280164586759
+        "x": 4.5545783132530095,
+        "y": 8.50443373493976
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 7.039,
-        "y": 7.329
+        "x": 6.150024096389569,
+        "y": 3.718096385540008
       },
       "prevControl": {
-        "x": 6.687147732668844,
-        "y": 7.465834933227895
+        "x": 6.366380667759851,
+        "y": 3.592837317904582
       },
       "nextControl": null,
       "isLocked": false,
@@ -31,14 +31,7 @@
   "rotationTargets": [],
   "constraintZones": [],
   "pointTowardsZones": [],
-  "eventMarkers": [
-    {
-      "name": "",
-      "waypointRelativePos": 0,
-      "endWaypointRelativePos": null,
-      "command": null
-    }
-  ],
+  "eventMarkers": [],
   "globalConstraints": {
     "maxVelocity": 3.0,
     "maxAcceleration": 3.0,
@@ -48,14 +41,14 @@
     "unlimited": false
   },
   "goalEndState": {
-    "velocity": 4.98,
-    "rotation": -77.42
+    "velocity": 0.0,
+    "rotation": -95.19442890773492
   },
   "reversed": false,
-  "folder": null,
+  "folder": "Sean Auton",
   "idealStartingState": {
-    "velocity": 0,
+    "velocity": 0.0,
     "rotation": 0.0
   },
-  "useDefaultConstraints": false
+  "useDefaultConstraints": true
 }

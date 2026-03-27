@@ -5,27 +5,9 @@
     "data": {
       "commands": [
         {
-          "type": "path",
-          "data": {
-            "pathName": "TopToMiddle"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "deployIntake"
-          }
-        },
-        {
           "type": "parallel",
           "data": {
             "commands": [
-              {
-                "type": "path",
-                "data": {
-                  "pathName": "MiddleToBalls"
-                }
-              },
               {
                 "type": "named",
                 "data": {
@@ -36,15 +18,33 @@
           }
         },
         {
+          "type": "wait",
+          "data": {
+            "waitTime": 1.0
+          }
+        },
+        {
           "type": "named",
           "data": {
             "name": "overrideShooter"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 7.5
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "rapidFireShooter"
           }
         }
       ]
     }
   },
-  "resetOdom": true,
+  "resetOdom": false,
   "folder": null,
   "choreoAuto": false
 }

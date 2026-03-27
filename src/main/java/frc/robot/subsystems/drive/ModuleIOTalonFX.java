@@ -54,9 +54,11 @@ public class ModuleIOTalonFX implements ModuleIO {
   private final CANcoder cancoder;
 
   // Voltage control requests
-  private final VoltageOut voltageRequest = new VoltageOut(0);
-  private final PositionVoltage positionVoltageRequest = new PositionVoltage(0.0);
-  private final VelocityVoltage velocityVoltageRequest = new VelocityVoltage(0.0);
+  private final VoltageOut voltageRequest = new VoltageOut(0).withEnableFOC(true);
+  private final PositionVoltage positionVoltageRequest =
+      new PositionVoltage(0.0).withEnableFOC(true);
+  private final VelocityVoltage velocityVoltageRequest =
+      new VelocityVoltage(0.0).withEnableFOC(true);
 
   // Torque-current control requests
   private final TorqueCurrentFOC torqueCurrentRequest = new TorqueCurrentFOC(0);
@@ -108,6 +110,14 @@ public class ModuleIOTalonFX implements ModuleIO {
     driveConfig.TorqueCurrent.PeakReverseTorqueCurrent = -constants.SlipCurrent;
     driveConfig.CurrentLimits.StatorCurrentLimit = constants.SlipCurrent;
     driveConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    driveConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
+    driveConfig.CurrentLimits.SupplyCurrentLimit = 40.0;
+    driveConfig.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    driveConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.15;
+    driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.15;
+    driveConfig.OpenLoopRamps.TorqueOpenLoopRampPeriod = 0.15;
+    driveConfig.ClosedLoopRamps.TorqueClosedLoopRampPeriod = 0.15;
     driveConfig.MotorOutput.Inverted =
         constants.DriveMotorInverted
             ? InvertedValue.Clockwise_Positive
@@ -120,6 +130,14 @@ public class ModuleIOTalonFX implements ModuleIO {
     turnConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     turnConfig.Slot0 = constants.SteerMotorGains;
     turnConfig.Feedback.FeedbackRemoteSensorID = constants.EncoderId;
+
+    turnConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
+    turnConfig.CurrentLimits.SupplyCurrentLimit = 40.0; // 60
+    turnConfig.CurrentLimits.SupplyCurrentLowerLimit = 20.0; // 40
+    turnConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    turnConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    turnConfig.CurrentLimits.StatorCurrentLimit = 60.0;
+
     turnConfig.Feedback.FeedbackSensorSource =
         switch (constants.FeedbackSource) {
           case RemoteCANcoder -> FeedbackSensorSourceValue.RemoteCANcoder;
@@ -260,5 +278,17 @@ public class ModuleIOTalonFX implements ModuleIO {
           case TorqueCurrentFOC -> positionTorqueCurrentRequest.withPosition(
               rotation.getRotations());
         });
+  }
+
+  // TODO: Placeholder values, should work okay
+  @Override
+  public void setDriveSupplyCurrentLimit(double amps) {
+    var config =
+        new com.ctre.phoenix6.configs.CurrentLimitsConfigs()
+            .withSupplyCurrentLimitEnable(true)
+            .withSupplyCurrentLimit(amps)
+            .withSupplyCurrentLowerLimit(amps * 0.75)
+            .withSupplyCurrentLowerTime(2.0);
+    driveTalon.getConfigurator().apply(config, 0.05);
   }
 }

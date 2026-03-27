@@ -138,4 +138,9 @@ public class Module {
   public double getFFCharacterizationVelocity() {
     return Units.radiansToRotations(inputs.driveVelocityRadPerSec);
   }
+
+  /** Updates the drive motor supply current limit. */
+  public void setDriveSupplyCurrentLimit(double amps) {
+    io.setDriveSupplyCurrentLimit(amps);
+  }
 }

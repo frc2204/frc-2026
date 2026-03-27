@@ -7,9 +7,11 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
-import frc.robot.subsystems.turret.ShooterSubsystem;
+import frc.robot.subsystems.shooting.HoodSubsystem;
+import frc.robot.subsystems.shooting.ShooterSubsystem;
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
@@ -28,6 +30,8 @@ public class Robot extends LoggedRobot {
   private RobotContainer robotContainer;
 
   public Robot() {
+    RobotController.setBrownoutVoltage(5.5);
+
     // Record metadata
     Logger.recordMetadata("ProjectName", BuildConstants.MAVEN_NAME);
     Logger.recordMetadata("BuildDate", BuildConstants.BUILD_DATE);
@@ -85,6 +89,7 @@ public class Robot extends LoggedRobot {
     // This must be called from the robot's periodic block in order for anything in
     // the Command-based framework to work.
     CommandScheduler.getInstance().run();
+    robotContainer.updateDashboard();
 
     // Return to non-RT thread priority (do not modify the first argument)
     // Threads.setCurrentThreadPriority(false, 10);
@@ -94,6 +99,10 @@ public class Robot extends LoggedRobot {
   @Override
   public void disabledInit() {
     LimelightHelpers.SetIMUMode("limelight-four", 1);
+    //    LimelightHelpers.setPipelineIndex("limelight-four", 2);
+    LimelightHelpers.setLimelightNTDouble("limelight-four", "throttle_set", 200);
+    HoodSubsystem.getInstance().setPosition(0.0);
+    //    TurretSubsystem.
   }
 
   /** This function is called periodically when disabled. */
@@ -104,6 +113,8 @@ public class Robot extends LoggedRobot {
   @Override
   public void autonomousInit() {
     LimelightHelpers.SetIMUMode("limelight-four", 4);
+    LimelightHelpers.setLimelightNTDouble("limelight-four", "throttle_set", 0);
+    ShooterSubsystem.getInstance().onEnable();
     autonomousCommand = robotContainer.getAutonomousCommand();
 
     // schedule the autonomous command (example)
@@ -124,6 +135,10 @@ public class Robot extends LoggedRobot {
     // continue until interrupted by another command, remove
     // this line or comment it out.
     LimelightHelpers.SetIMUMode("limelight-four", 4);
+    LimelightHelpers.setLimelightNTDouble("limelight-four", "throttle_set", 0);
+    frc.robot.util.HubShiftUtil.initialize();
+    robotContainer.resetPoseForAlliance();
+    robotContainer.getDrive().resetSetpoint();
 
     ShooterSubsystem.getInstance().onEnable();
     if (autonomousCommand != null) {

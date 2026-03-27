@@ -7,28 +7,52 @@
 
 package frc.robot;
 
-import static frc.robot.subsystems.vision.VisionConstants.camera0Name;
-import static frc.robot.subsystems.vision.VisionConstants.robotToCamera0;
+import static frc.robot.subsystems.vision.VisionConstants.*;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.util.sendable.Sendable;
+import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.GenericHID;
+import edu.wpi.first.wpilibj.GenericHID.RumbleType;
+import edu.wpi.first.wpilibj.PowerDistribution;
+import edu.wpi.first.wpilibj.PowerDistribution.ModuleType;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.smartdashboard.Field2d;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import frc.robot.commands.AdaptiveAutoCommand;
+import frc.robot.commands.ChaseBallCommand;
 import frc.robot.commands.DriveCommands;
+import frc.robot.commands.ShootingCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.*;
-import frc.robot.subsystems.turret.ShooterSubsystem;
-import frc.robot.subsystems.turret.turrettestingSubsystem;
+import frc.robot.subsystems.handoff.HandoffSubsystem;
+import frc.robot.subsystems.intake.IndexerSubsystem;
+import frc.robot.subsystems.intake.IntakeSubsystem;
+import frc.robot.subsystems.objectdetection.ObjectDetection;
+import frc.robot.subsystems.shooting.HoodSubsystem;
+import frc.robot.subsystems.shooting.ShooterSubsystem;
+import frc.robot.subsystems.shooting.TurretSubsystem;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionIO;
 import frc.robot.subsystems.vision.VisionIOLimelight;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
-import frc.robot.util.ObjectToPose;
+import frc.robot.util.FieldConstants;
+import frc.robot.util.HubShiftUtil;
+import frc.robot.util.geometry.AllianceFlipUtil;
+import java.util.List;
+import java.util.function.DoubleSupplier;
+import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 /**
@@ -41,24 +65,37 @@ public class RobotContainer {
   // Subsystems
   private final Drive drive;
   private final Vision vision;
-  private final ObjectToPose objectToPose = new ObjectToPose();
-  public final ShooterSubsystem shooter = new ShooterSubsystem();
-  private final turrettestingSubsystem turret;
+  private final ShooterSubsystem shooter = ShooterSubsystem.getInstance();
+  private final IntakeSubsystem intake = IntakeSubsystem.getInstance();
+  private final IndexerSubsystem indexer = IndexerSubsystem.getInstance();
+  private final HandoffSubsystem handoff = HandoffSubsystem.getInstance();
+  private final HoodSubsystem hood = HoodSubsystem.getInstance();
+  private final TurretSubsystem turret;
+  private final ObjectDetection objectDetection;
+  private final frc.robot.subsystems.leds.CANdleSubsystem leds;
+  private final frc.robot.util.DriverViewSelector driverView;
+  private final PowerDistribution pdh = new PowerDistribution(45, ModuleType.kRev);
 
-  // Controller
-  private final CommandPS5Controller controller = new CommandPS5Controller(0);
-  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(1);
+  // Controllers
+  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
+  private final CommandXboxController xboxController = new CommandXboxController(1);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
+  private final Field2d field = new Field2d();
+  private int pdhLogCounter = 0;
+  private boolean slowMode = false;
+  private boolean overrideSpeed = false;
+  private boolean intakeDeployed = false;
+  private double lastIntakeToggleTime = 0;
+  private boolean intakeDriveEnabled = false;
+  private Rotation2d intakeHeading = Rotation2d.kZero;
 
   /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
     switch (Constants.currentMode) {
       case REAL:
         // Real robot, instantiate hardware IO implementations
-        // ModuleIOTalonFX is intended for modules with TalonFX drive, TalonFX turn, and
-        // a CANcoder
         drive =
             new Drive(
                 new GyroIOPigeon2(),
@@ -70,52 +107,12 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
-                new VisionIOLimelight(camera0Name, drive::getRotation));
-        turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
-
-        // The ModuleIOTalonFXS implkl; p[,,,,,........;;;''''''''''''
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        //
-        // 056ementation provides an example implementation for
-        // TalonFXS controller connected to a CANdi with a PWM encoder. The
-        // implementations
-        // of ModuleIOTalonFX, ModuleIOTalonFXS, and ModuleIOSpark (from the Spark
-        // swerve
-        // template) can be freely intermixed to support alternative hardware
-        // arrangements.
-        // Please see the AdvantageKit template documentation for more information:
-        // https://docs.advantagekit.org/getting-started/template-projects/talonfx-swerve-template#custom-module-implementations
-        //
-        // drive =
-        // new Drive(
-        // new GyroIOPigeon2(),
-        // new ModuleIOTalonFXS(TunerConstants.FrontLeft),
-        // new ModuleIOTalonFXS(TunerConstants.FrontRight),
-        // new ModuleIOTalonFXS(TunerConstants.BackLeft),
-        // new ModuleIOTalonFXS(TunerConstants.BackRight));
+                () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
+                //                new VisionIOLimelight(camera0Name, drive::getRotation),
+                new VisionIOLimelight(camera1Name, drive::getRotation),
+                new VisionIOLimelight(camera2Name, drive::getRotation),
+                new VisionIOLimelight(camera3Name, drive::getRotation));
+        turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
 
       case SIM:
@@ -131,8 +128,9 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
+                () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
                 new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose));
-        turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
+        turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
 
       default:
@@ -145,10 +143,37 @@ public class RobotContainer {
                 new ModuleIO() {},
                 new ModuleIO() {});
 
-        vision = new Vision(drive::addVisionMeasurement, new VisionIO() {}, new VisionIO() {});
-        turret = new turrettestingSubsystem(drive::getPose, drive::getChassisSpeeds);
+        vision =
+            new Vision(
+                drive::addVisionMeasurement,
+                () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
+                new VisionIO() {},
+                new VisionIO() {});
+        turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
     }
+
+    // Set up object detection
+    objectDetection = new ObjectDetection(drive::getPose);
+
+    leds = new frc.robot.subsystems.leds.CANdleSubsystem(turret);
+    driverView =
+        new frc.robot.util.DriverViewSelector(drive::getPose, turret::getAbsolutePositionDeg);
+
+    // Register named commands for PathPlanner
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "deployIntake", Commands.runOnce(() -> intake.intake(), intake));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "stowIntake", Commands.runOnce(() -> intake.stow(), intake));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "spinUpShooter", ShootingCommands.spinUp(shooter));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "idleShooter", ShootingCommands.idle(shooter));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "overrideShooter",
+        Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE), shooter));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "autoShoot", ShootingCommands.autoShoot(turret, shooter, hood, drive::getPose));
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -169,6 +194,55 @@ public class RobotContainer {
     autoChooser.addOption(
         "Drive SysId (Dynamic Reverse)", drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
 
+    // Adaptive ball-chasing auto — draw "Ball Sweep" path in PathPlanner
+    autoChooser.addOption(
+        "Adaptive Ball Auto",
+        new AdaptiveAutoCommand(drive, objectDetection, intake, "Ball Sweep"));
+
+    // Simple ball chase — just drives at any detected ball
+    autoChooser.addOption("Chase Ball", new ChaseBallCommand(drive, objectDetection, intake));
+
+    // Elastic dashboard setup
+    SmartDashboard.putData("Field", field);
+    SmartDashboard.putData(
+        "Swerve Drive",
+        new Sendable() {
+          @Override
+          public void initSendable(SendableBuilder builder) {
+            builder.setSmartDashboardType("SwerveDrive");
+            builder.addDoubleProperty(
+                "Front Left Angle", () -> drive.getModuleStates()[0].angle.getRadians(), null);
+            builder.addDoubleProperty(
+                "Front Left Velocity", () -> drive.getModuleStates()[0].speedMetersPerSecond, null);
+            builder.addDoubleProperty(
+                "Front Right Angle", () -> drive.getModuleStates()[1].angle.getRadians(), null);
+            builder.addDoubleProperty(
+                "Front Right Velocity",
+                () -> drive.getModuleStates()[1].speedMetersPerSecond,
+                null);
+            builder.addDoubleProperty(
+                "Back Left Angle", () -> drive.getModuleStates()[2].angle.getRadians(), null);
+            builder.addDoubleProperty(
+                "Back Left Velocity", () -> drive.getModuleStates()[2].speedMetersPerSecond, null);
+            builder.addDoubleProperty(
+                "Back Right Angle", () -> drive.getModuleStates()[3].angle.getRadians(), null);
+            builder.addDoubleProperty(
+                "Back Right Velocity", () -> drive.getModuleStates()[3].speedMetersPerSecond, null);
+            builder.addDoubleProperty("Robot Angle", () -> drive.getRotation().getRadians(), null);
+          }
+        });
+
+    // Turret angle as radial gauge
+    SmartDashboard.putData(
+        "Turret Angle",
+        new Sendable() {
+          @Override
+          public void initSendable(SendableBuilder builder) {
+            builder.setSmartDashboardType("Gyro");
+            builder.addDoubleProperty("Value", turret::getAbsolutePositionDeg, null);
+          }
+        });
+
     // Configure the button bindings
     configureButtonBindings();
   }
@@ -180,30 +254,77 @@ public class RobotContainer {
    * edu.wpi.first.wpilibj2.command.button.JoystickButton}.
    */
   private void configureButtonBindings() {
-    // Default command, normal field-relative drive
+    // Default command, field-relative drive with speed modes
+    // PS button toggles intake drive mode (heading follows stick direction)
+    double slowFactor = 0.65; // tune
+    var xSup = (DoubleSupplier) () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor);
+    var ySup = (DoubleSupplier) () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor);
+    var omegaSup =
+        (DoubleSupplier) () -> -ps5Controller.getRightX() * getDriveSpeedFactor(slowFactor);
+
+    ps5Controller
+        .PS()
+        .onTrue(
+            Commands.sequence(
+                Commands.runOnce(
+                    () -> {
+                      intakeDriveEnabled = !intakeDriveEnabled;
+                      if (intakeDriveEnabled) {
+                        intakeHeading = drive.getRotation();
+                      }
+                    }),
+                Commands.runOnce(() -> {}, drive)));
+
     drive.setDefaultCommand(
-        DriveCommands.joystickDrive(
-            drive,
-            () -> -controller.getLeftY(),
-            () -> -controller.getLeftX(),
-            () -> -controller.getRightX()));
+        Commands.either(
+            DriveCommands.joystickDriveAtAngle(
+                drive,
+                xSup,
+                ySup,
+                () -> {
+                  double x = -ps5Controller.getLeftY();
+                  double y = -ps5Controller.getLeftX();
+                  if (Math.hypot(x, y) > 0.1) {
+                    double heading = Math.atan2(y, x);
+                    boolean isFlipped =
+                        DriverStation.getAlliance().isPresent()
+                            && DriverStation.getAlliance().get() == Alliance.Red;
+                    if (isFlipped) heading += Math.PI;
+                    intakeHeading = Rotation2d.fromRadians(heading);
+                  }
+                  return intakeHeading;
+                }),
+            DriveCommands.joystickDrive(drive, xSup, ySup, omegaSup),
+            () -> intakeDriveEnabled));
 
-    // Lock to 0° when A button is held
-    //    controller
-    //        .cross()
-    //        .whileTrue(
-    //            DriveCommands.joystickDriveAtAngle(
-    //                drive,
-    //                () -> -controller.getLeftY(),
-    //                () -> -controller.getLeftX(),
-    //                () -> Rotation2d.kZero));
+    // Square: toggle override speed (full speed, ignores shooting slowdown)
+    ps5Controller.square().onTrue(Commands.runOnce(() -> overrideSpeed = !overrideSpeed));
 
-    // Switch to X pattern when X button is pressed
-    controller.cross().onTrue(Commands.runOnce(drive::stopWithX, drive));
+    // TODO:  make triangle spin up and down
 
-    // Reset gyro to 0° when B button is pressed
-    controller
-        .circle()
+    // R3: snap drivetrain heading to nearest 0° or 180° (intake faces forward/backward)
+    ps5Controller
+        .R3()
+        .whileTrue(
+            DriveCommands.joystickDriveAtAngle(
+                drive,
+                () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor),
+                () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor),
+                () -> {
+                  double heading = drive.getRotation().getRadians();
+                  // Normalize to [-PI, PI] then snap to 0 or PI
+                  heading = Math.IEEEremainder(heading, 2.0 * Math.PI);
+                  if (heading > Math.PI / 2.0) return Rotation2d.kPi;
+                  if (heading < -Math.PI / 2.0) return Rotation2d.kPi;
+                  return Rotation2d.kZero;
+                }));
+
+    // Cross: toggle slow mode
+    ps5Controller.cross().onTrue(Commands.runOnce(() -> slowMode = !slowMode));
+
+    // Options: reset gyro to 0°
+    ps5Controller
+        .options()
         .onTrue(
             Commands.runOnce(
                     () ->
@@ -212,26 +333,194 @@ public class RobotContainer {
                     drive)
                 .ignoringDisable(true));
 
-    controller
-        .circle()
+    // Triangle: spin up shooter
+    ps5Controller
+        .triangle()
         .onTrue(
             Commands.runOnce(
                 () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+
+    // Circle: idle shooter
     ps5Controller
-        .R1()
+        .circle()
         .onTrue(
-            Commands.runOnce(
-                () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE), shooter));
+            Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+
+    // R2 or L2: either trigger activates shooting system
+    // Both together: force fire override
     ps5Controller
+        .R2()
+        .or(ps5Controller.L2())
+        .whileTrue(
+            ShootingCommands.shootWhileHeld(
+                turret,
+                shooter,
+                hood,
+                drive::getPose,
+                () -> ps5Controller.R2().getAsBoolean() && ps5Controller.L2().getAsBoolean(),
+                ps5Controller.R2()::getAsBoolean))
+        .onFalse(ShootingCommands.spinUp(shooter));
+
+    // L1: toggle intake deploy/stow (debounced)
+    ps5Controller // later ask if daniel wants it to be like hold for 1 sec and stop spinning intake
+        // but its still down
         .L1()
         .onTrue(
             Commands.runOnce(
-                () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE_ACCURATE),
-                shooter));
-    controller
-        .triangle()
+                () -> {
+                  double now = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+                  if (now - lastIntakeToggleTime < 0.3) return; // debounce
+                  lastIntakeToggleTime = now;
+                  intakeDeployed = !intakeDeployed;
+                  if (intakeDeployed) {
+                    intake.intake();
+                  } else {
+                    intake.stow();
+                  }
+                },
+                intake));
+
+    // R1: override — reverse handoff, indexer, intake while held
+    ps5Controller
+        .R1()
+        .whileTrue(
+            Commands.runOnce(
+                () -> {
+                  handoff.setReverse(true);
+                  indexer.reverse();
+                  intake.eject();
+                },
+                handoff,
+                indexer,
+                intake))
+        .onFalse(
+            Commands.runOnce(
+                () -> {
+                  handoff.setReverse(false);
+                  indexer.stop();
+                  if (intakeDeployed) {
+                    intake.intake();
+                  } else {
+                    intake.stow();
+                  }
+                },
+                handoff,
+                indexer,
+                intake));
+
+    // Shift change rumble alerts — 0.5s pulse at 10s and 5s remaining
+    Trigger tenSecWarning =
+        new Trigger(
+            () -> {
+              double remaining = HubShiftUtil.getOfficialShiftInfo().remainingTime();
+              return remaining <= 10.0 && remaining > 9.5;
+            });
+    Trigger fiveSecWarning =
+        new Trigger(
+            () -> {
+              double remaining = HubShiftUtil.getOfficialShiftInfo().remainingTime();
+              return remaining <= 5.0 && remaining > 4.5;
+            });
+
+    tenSecWarning
+        .whileTrue(
+            Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.3)))
+        .onFalse(
+            Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
+
+    fiveSecWarning
+        .whileTrue(
+            Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
+        .onFalse(
+            Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
+
+    // ── XBOX CONTROLLER (port 1) — operator live tuning ──────────────────
+    // Y: +25 RPM at nearest distance point
+    xboxController
+        .y()
         .onTrue(
-            Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+            Commands.runOnce(
+                () -> shooter.adjustRpmTrimAtDistance(shooter.getTargetDistance(), 25.0), shooter));
+
+    // A: -25 RPM at nearest distance point
+    xboxController
+        .a()
+        .onTrue(
+            Commands.runOnce(
+                () -> shooter.adjustRpmTrimAtDistance(shooter.getTargetDistance(), -25.0),
+                shooter));
+
+    // Right Trigger: +25 RPM global (all distances)
+    xboxController
+        .rightTrigger(0.5)
+        .onTrue(Commands.runOnce(() -> shooter.adjustGlobalRpmTrim(25.0), shooter));
+
+    // Left Trigger: -25 RPM global (all distances)
+    xboxController
+        .leftTrigger(0.5)
+        .onTrue(Commands.runOnce(() -> shooter.adjustGlobalRpmTrim(-25.0), shooter));
+
+    // POV Up: hood +0.014 rotations (~5°) at nearest distance point
+    xboxController
+        .povUp()
+        .onTrue(
+            Commands.runOnce(
+                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), 0.014), hood));
+
+    // POV Down: hood -0.014 rotations (~5°) at nearest distance point
+    xboxController
+        .povDown()
+        .onTrue(
+            Commands.runOnce(
+                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), -0.014), hood));
+
+    // Right Bumper: hood +0.014 rotations global
+    xboxController
+        .rightBumper()
+        .onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(0.014), hood));
+
+    // Left Bumper: hood -0.014 rotations global
+    xboxController
+        .leftBumper()
+        .onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(-0.014), hood));
+
+    // Left Stick X: turret offset ±17° (position-based, centered = 0)
+    new Trigger(() -> Math.abs(xboxController.getLeftX()) > 0.1)
+        .whileTrue(
+            Commands.run(
+                () -> turret.setTurretManualOffset(xboxController.getLeftX() * 17.0), turret))
+        .onFalse(Commands.runOnce(() -> turret.resetTurretManualOffset(), turret));
+
+    // Right Stick Y: manual intake deploy position control
+    new Trigger(() -> Math.abs(xboxController.getRightY()) > 0.1)
+        .whileTrue(
+            Commands.run(
+                () -> {
+                  intake.setState(IntakeSubsystem.IntakeState.MANUAL);
+                  intake.setManualVoltage(-xboxController.getRightY() * 4.0); // tune voltage
+                },
+                intake))
+        .onFalse(
+            Commands.runOnce(
+                () -> {
+                  intake.setManualVoltage(0.0);
+                  intake.stow();
+                },
+                intake));
+
+    // Back: reset all trims
+    xboxController
+        .back()
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  shooter.resetRpmTrim();
+                  hood.resetHoodTrim();
+                  turret.resetTurretManualOffset();
+                },
+                shooter,
+                hood,
+                turret));
   }
 
   /**
@@ -241,5 +530,133 @@ public class RobotContainer {
    */
   public Command getAutonomousCommand() {
     return autoChooser.get();
+  }
+
+  /** Call from Robot.robotPeriodic() to update Elastic dashboard. */
+  public void updateDashboard() {
+    // Field — robot pose + detected balls
+    field.setRobotPose(drive.getPose());
+    List<Translation2d> fuels = objectDetection.getFuelTranslations();
+    Pose2d[] fuelPoses =
+        fuels.stream().map(t -> new Pose2d(t, new Rotation2d())).toArray(Pose2d[]::new);
+    field.getObject("Fuel Balls").setPoses(fuelPoses);
+
+    // Handoff
+    SmartDashboard.putBoolean("Handoff/Beam Break", handoff.isBeamBroken());
+    SmartDashboard.putString("Handoff/State", handoff.getStateString());
+
+    // Intake
+    SmartDashboard.putString("Intake/State", intake.getState().name());
+    SmartDashboard.putBoolean(
+        "Intake/Deployed", intake.getState() != IntakeSubsystem.IntakeState.STOWED);
+
+    // Turret — publish angle as a gyro-style Sendable for radial gauge in Elastic
+    SmartDashboard.putBoolean("Turret/On Target", turret.isOnTarget());
+    SmartDashboard.putBoolean("Turret/Passing Mode", turret.isPassingMode());
+    SmartDashboard.putBoolean("Turret/At Goal", turret.atGoal());
+    SmartDashboard.putNumber("Turret/Angle", turret.getAbsolutePositionDeg());
+
+    // Hood
+    SmartDashboard.putBoolean("Hood/At Target", hood.atTarget());
+    SmartDashboard.putNumber("Hood/Position", hood.getPosition());
+
+    // Shooter
+    SmartDashboard.putString("Shooter/State", shooter.getState().name());
+    SmartDashboard.putBoolean("Shooter/At Speed", shooter.isAtGoalSpeed());
+    SmartDashboard.putNumber("Shooter/GlobalRpmTrim", shooter.getGlobalRpmTrim());
+
+    // Hood trim
+    SmartDashboard.putNumber("Hood/GlobalHoodTrim", hood.getGlobalHoodTrim());
+
+    // Turret trim
+    SmartDashboard.putNumber("Turret/ManualOffset", turret.getTurretManualOffset());
+
+    // Hub shift timing
+    HubShiftUtil.ShiftInfo shiftInfo = HubShiftUtil.getOfficialShiftInfo();
+    SmartDashboard.putString("Match/Current Shift", shiftInfo.currentShift().name());
+    SmartDashboard.putNumber("Match/Shift Time Left", shiftInfo.remainingTime());
+    SmartDashboard.putNumber(
+        "Match/Match Time", edu.wpi.first.wpilibj.DriverStation.getMatchTime());
+
+    // Indexer
+    SmartDashboard.putString("Indexer/State", indexer.getState().name());
+
+    // Object detection
+    SmartDashboard.putNumber("Detection/Ball Count", objectDetection.getTrackedFuelCount());
+
+    // Driver camera view
+    driverView.update();
+
+    // PDH / current draw logging (every 10 loops ~200ms to reduce CAN load)
+    if (++pdhLogCounter >= 10) {
+      pdhLogCounter = 0;
+      Logger.recordOutput("PDH/Voltage", pdh.getVoltage());
+      Logger.recordOutput("PDH/TotalCurrent", pdh.getTotalCurrent());
+      for (int ch = 0; ch < 24; ch++) {
+        Logger.recordOutput("PDH/Channel" + ch, pdh.getCurrent(ch));
+      }
+    }
+  }
+
+  /** Resets the pose to the alliance zone if no auto was run (pose is still near origin). */
+  public void resetPoseForAlliance() {
+    Pose2d currentPose = drive.getPose();
+    // Only reset if pose is still near the default (0,0) — meaning no auto ran
+    if (currentPose.getTranslation().getNorm() < 1.0) {
+      Pose2d startingPose;
+      if (AllianceFlipUtil.shouldFlip()) {
+        // Red alliance: place robot in red zone facing blue wall
+        startingPose =
+            new Pose2d(
+                FieldConstants.FIELDLENGTH - 1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kPi);
+      } else {
+        // Blue alliance: place robot in blue zone facing red wall
+        startingPose = new Pose2d(1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kZero);
+      }
+      drive.setPose(startingPose);
+    }
+  }
+
+  public Drive getDrive() {
+    return drive;
+  }
+
+  public TurretSubsystem getTurret() {
+    return turret;
+  }
+
+  private double getDriveSpeedFactor(double slowFactor) {
+    if (overrideSpeed) return 1.0;
+    if (slowMode) return slowFactor;
+    return getShootingSpeedFactor();
+  }
+
+  // right now try with just a constant speed like slowfactor untill shooting on the move is
+  // better??
+
+  // returns from 0.3 to 0.8 when in alliance zone (shooting at hub), 1.0 otherwise
+  private double getShootingSpeedFactor() {
+    boolean shooting = ps5Controller.R2().getAsBoolean() || ps5Controller.L2().getAsBoolean();
+    if (!shooting) return 1.0;
+
+    Pose2d pose = drive.getPose();
+    double hubDist;
+    if (AllianceFlipUtil.shouldFlip()) {
+      // red alliance so hub is near x = FIELDLENGTH - ALLIANCEWALLTOHUB
+      double hubX = FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+      if (pose.getX() < hubX) return 1.0; // not in alliance zone, full speed
+      hubDist = pose.getX() - hubX;
+    } else {
+      // blue hub is near x = ALLIANCEWALLTOHUB
+      double hubX = FieldConstants.ALLIANCEWALLTOHUB;
+      if (pose.getX() > hubX) return 1.0; // not in alliance zone, full speed
+      hubDist = hubX - pose.getX();
+    }
+
+    double minSpeed = 0.3; // tune: speed when right at hub
+    double maxSpeed = 0.8; // tune: cap speed even at edge of alliance zone
+    double maxDist = FieldConstants.ALLIANCEWALLTOHUB;
+    double factor = minSpeed + (maxSpeed - minSpeed) * Math.min(hubDist / maxDist, 1.0);
+    return factor;
   }
 }
