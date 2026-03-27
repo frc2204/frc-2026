@@ -33,6 +33,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.AdaptiveAutoCommand;
 import frc.robot.commands.ChaseBallCommand;
 import frc.robot.commands.DriveCommands;
+import frc.robot.commands.ShootingCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.*;
 import frc.robot.subsystems.handoff.HandoffSubsystem;
@@ -106,6 +107,7 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
+                () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
                 //                new VisionIOLimelight(camera0Name, drive::getRotation),
                 new VisionIOLimelight(camera1Name, drive::getRotation),
                 new VisionIOLimelight(camera2Name, drive::getRotation),
@@ -126,6 +128,7 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
+                () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
                 new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose));
         turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
@@ -140,7 +143,12 @@ public class RobotContainer {
                 new ModuleIO() {},
                 new ModuleIO() {});
 
-        vision = new Vision(drive::addVisionMeasurement, new VisionIO() {}, new VisionIO() {});
+        vision =
+            new Vision(
+                drive::addVisionMeasurement,
+                () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
+                new VisionIO() {},
+                new VisionIO() {});
         turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
         break;
     }
@@ -158,18 +166,14 @@ public class RobotContainer {
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
         "stowIntake", Commands.runOnce(() -> intake.stow(), intake));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
-        "spinUpShooter",
-        Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
+        "spinUpShooter", ShootingCommands.spinUp(shooter));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
-        "idleShooter",
-        Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+        "idleShooter", ShootingCommands.idle(shooter));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
         "overrideShooter",
         Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE), shooter));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
-        "rapidFireShooter",
-        Commands.runOnce(
-            () -> shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE), shooter));
+        "autoShoot", ShootingCommands.autoShoot(turret, shooter, hood, drive::getPose));
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -258,7 +262,12 @@ public class RobotContainer {
     var omegaSup =
         (DoubleSupplier) () -> -ps5Controller.getRightX() * getDriveSpeedFactor(slowFactor);
 
-    ps5Controller.PS().onTrue(Commands.runOnce(() -> intakeDriveEnabled = !intakeDriveEnabled));
+    ps5Controller
+        .PS()
+        .onTrue(
+            Commands.sequence(
+                Commands.runOnce(() -> intakeDriveEnabled = !intakeDriveEnabled),
+                Commands.runOnce(() -> {}, drive)));
 
     drive.setDefaultCommand(
         Commands.either(
@@ -337,59 +346,14 @@ public class RobotContainer {
         .R2()
         .or(ps5Controller.L2())
         .whileTrue(
-            Commands.run(
-                () -> {
-                  boolean r2Held = ps5Controller.R2().getAsBoolean();
-                  boolean l2Held = ps5Controller.L2().getAsBoolean();
-                  boolean override = r2Held && l2Held;
-                  boolean insideTower = FieldConstants.isInsideTower(drive.getPose());
-                  boolean shiftActive =
-                      !edu.wpi.first.wpilibj.DriverStation.isFMSAttached()
-                          || HubShiftUtil.getShiftedShiftInfo().active();
-                  boolean onTarget = turret.isOnTarget();
-                  boolean passing = turret.isPassingMode();
-                  boolean atSpeed = shooter.isAtGoalSpeed();
-                  boolean hoodReady = hood.atTarget();
-                  boolean looselyOnTarget = turret.isLooselyOnTarget();
-                  boolean justSpinUp = turret.justSpinUp();
-                  System.out.println(
-                      "onTarget="
-                          + onTarget
-                          + " atSpeed="
-                          + atSpeed
-                          + " hoodReady="
-                          + hoodReady
-                          + " passing="
-                          + passing
-                          + " justSpinUp="
-                          + justSpinUp
-                          + " shiftActive="
-                          + shiftActive);
-                  if (override) {
-                    shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE);
-                  } else if (insideTower) {
-                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
-                    //                    indexer.feed();
-                  } else if (justSpinUp) {
-                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
-                  } else if (passing && looselyOnTarget) {
-                    shooter.setState(ShooterSubsystem.ShooterState.PASSING);
-                  } else if (onTarget && atSpeed && hoodReady && r2Held && shiftActive) {
-                    shooter.setState(ShooterSubsystem.ShooterState.RAPID_FIRE);
-                    //                    indexer.feed();
-                  } else {
-                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
-                  }
-                },
-                shooter))
-        .onFalse(
-            Commands.runOnce(
-                () -> {
-                  shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
-                  //                    indexer.stop();
-                },
+            ShootingCommands.shootWhileHeld(
+                turret,
                 shooter,
-                indexer));
+                hood,
+                drive::getPose,
+                () -> ps5Controller.R2().getAsBoolean() && ps5Controller.L2().getAsBoolean(),
+                ps5Controller.R2()::getAsBoolean))
+        .onFalse(ShootingCommands.spinUp(shooter));
 
     // L1: toggle intake deploy/stow (debounced)
     ps5Controller // later ask if daniel wants it to be like hold for 1 sec and stop spinning intake
@@ -495,14 +459,14 @@ public class RobotContainer {
         .povUp()
         .onTrue(
             Commands.runOnce(
-                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), 0.014), shooter));
+                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), 0.014), hood));
 
     // POV Down: hood -0.014 rotations (~5°) at nearest distance point
     xboxController
         .povDown()
         .onTrue(
             Commands.runOnce(
-                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), -0.014), shooter));
+                () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), -0.014), hood));
 
     // Right Bumper: hood +0.014 rotations global
     xboxController
