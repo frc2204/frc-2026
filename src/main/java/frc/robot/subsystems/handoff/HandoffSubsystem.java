@@ -59,6 +59,7 @@ public class HandoffSubsystem extends SubsystemBase {
     config.CurrentLimits.SupplyCurrentLimit = 40; // peak spike
     config.CurrentLimits.SupplyCurrentLowerLimit = 25; // steady state after spike
     config.CurrentLimits.SupplyCurrentLowerTime = 3.0; // seconds at peak before dropping
+    handoffMotor.getConfigurator().apply(config);
   }
 
   @Override
