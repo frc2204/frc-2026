@@ -15,6 +15,8 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.GenericHID.RumbleType;
 import edu.wpi.first.wpilibj.PowerDistribution;
@@ -48,6 +50,7 @@ import frc.robot.util.FieldConstants;
 import frc.robot.util.HubShiftUtil;
 import frc.robot.util.geometry.AllianceFlipUtil;
 import java.util.List;
+import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
@@ -84,6 +87,8 @@ public class RobotContainer {
   private boolean overrideSpeed = false;
   private boolean intakeDeployed = false;
   private double lastIntakeToggleTime = 0;
+  private boolean intakeDriveEnabled = false;
+  private Rotation2d intakeHeading = Rotation2d.kZero;
 
   /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
@@ -246,13 +251,36 @@ public class RobotContainer {
    */
   private void configureButtonBindings() {
     // Default command, field-relative drive with speed modes
+    // PS button toggles intake drive mode (heading follows stick direction)
     double slowFactor = 0.65; // tune
+    var xSup = (DoubleSupplier) () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor);
+    var ySup = (DoubleSupplier) () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor);
+    var omegaSup =
+        (DoubleSupplier) () -> -ps5Controller.getRightX() * getDriveSpeedFactor(slowFactor);
+
+    ps5Controller.PS().onTrue(Commands.runOnce(() -> intakeDriveEnabled = !intakeDriveEnabled));
+
     drive.setDefaultCommand(
-        DriveCommands.joystickDrive(
-            drive,
-            () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor),
-            () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor),
-            () -> -ps5Controller.getRightX() * getDriveSpeedFactor(slowFactor)));
+        Commands.either(
+            DriveCommands.joystickDriveAtAngle(
+                drive,
+                xSup,
+                ySup,
+                () -> {
+                  double x = -ps5Controller.getLeftY();
+                  double y = -ps5Controller.getLeftX();
+                  if (Math.hypot(x, y) > 0.1) {
+                    double heading = Math.atan2(y, x);
+                    boolean isFlipped =
+                        DriverStation.getAlliance().isPresent()
+                            && DriverStation.getAlliance().get() == Alliance.Red;
+                    if (isFlipped) heading += Math.PI;
+                    intakeHeading = Rotation2d.fromRadians(heading);
+                  }
+                  return intakeHeading;
+                }),
+            DriveCommands.joystickDrive(drive, xSup, ySup, omegaSup),
+            () -> intakeDriveEnabled));
 
     // Square: toggle override speed (full speed, ignores shooting slowdown)
     ps5Controller.square().onTrue(Commands.runOnce(() -> overrideSpeed = !overrideSpeed));
@@ -409,11 +437,6 @@ public class RobotContainer {
                 handoff,
                 indexer,
                 intake));
-
-    //    // D-pad up: chase nearest detected ball
-    //    ps5Controller
-    //        .povUp()
-    //        .whileTrue(new ChaseBallCommand(drive, objectDetection, intake));
 
     // Shift change rumble alerts — 0.5s pulse at 10s and 5s remaining
     Trigger tenSecWarning =
