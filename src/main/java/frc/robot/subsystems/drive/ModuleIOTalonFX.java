@@ -116,6 +116,8 @@ public class ModuleIOTalonFX implements ModuleIO {
     driveConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
     driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.15;
     driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.15;
+    driveConfig.OpenLoopRamps.TorqueOpenLoopRampPeriod = 0.15;
+    driveConfig.ClosedLoopRamps.TorqueClosedLoopRampPeriod = 0.15;
     driveConfig.MotorOutput.Inverted =
         constants.DriveMotorInverted
             ? InvertedValue.Clockwise_Positive
@@ -133,6 +135,8 @@ public class ModuleIOTalonFX implements ModuleIO {
     turnConfig.CurrentLimits.SupplyCurrentLimit = 40.0; // 60
     turnConfig.CurrentLimits.SupplyCurrentLowerLimit = 20.0; // 40
     turnConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
+    turnConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    turnConfig.CurrentLimits.StatorCurrentLimit = 60.0;
 
     turnConfig.Feedback.FeedbackSensorSource =
         switch (constants.FeedbackSource) {
@@ -285,6 +289,6 @@ public class ModuleIOTalonFX implements ModuleIO {
             .withSupplyCurrentLimit(amps)
             .withSupplyCurrentLowerLimit(amps * 0.75)
             .withSupplyCurrentLowerTime(2.0);
-    driveTalon.getConfigurator().apply(config, 0.01);
+    driveTalon.getConfigurator().apply(config, 0.05);
   }
 }
