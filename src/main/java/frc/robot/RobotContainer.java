@@ -266,7 +266,13 @@ public class RobotContainer {
         .PS()
         .onTrue(
             Commands.sequence(
-                Commands.runOnce(() -> intakeDriveEnabled = !intakeDriveEnabled),
+                Commands.runOnce(
+                    () -> {
+                      intakeDriveEnabled = !intakeDriveEnabled;
+                      if (intakeDriveEnabled) {
+                        intakeHeading = drive.getRotation();
+                      }
+                    }),
                 Commands.runOnce(() -> {}, drive)));
 
     drive.setDefaultCommand(
