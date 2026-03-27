@@ -41,6 +41,7 @@ public class HoodSubsystem extends SubsystemBase {
 
   private double robotPoseX = 0;
   private double targetDistance = 0.0;
+  private boolean trenchMode = false;
 
   // ── LIVE TRIM ─────────────────────────────────────────────────────────────
   private double globalHoodTrim = 0.0;
@@ -104,13 +105,17 @@ public class HoodSubsystem extends SubsystemBase {
 
     hoodMotor.getConfigurator().apply(config);
     hoodMotor.setPosition(0);
-    // com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(hoodMotor);
+    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(hoodMotor);
+  }
+
+  public boolean isTrenchMode() {
+    return trenchMode;
   }
 
   @Override
   public void periodic() {
     double allianceX = AllianceFlipUtil.applyX(robotPoseX);
-    boolean trenchMode = false;
+    trenchMode = false;
 
     if (allianceX > 2 && allianceX < 7) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
