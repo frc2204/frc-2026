@@ -96,8 +96,8 @@ public class IntakeSubsystem extends SubsystemBase {
     config.MotionMagic.MotionMagicCruiseVelocity = 40; // mechanism rps (~180 deg/s)
     config.MotionMagic.MotionMagicAcceleration = 40; // mechanism rps^2
 
-    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
-    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+//    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+//    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
 
     deployRightMotor.getConfigurator().apply(config);
 
