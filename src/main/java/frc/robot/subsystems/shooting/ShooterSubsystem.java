@@ -323,7 +323,8 @@ public class ShooterSubsystem extends SubsystemBase {
     return Math.abs(currentRPM - targetRPM) <= rpmAccurateTolerance;
   }
 
-  // Start at minimum map key so the interpolation lookup is always valid before turret sets a real distance.
+  // Start at minimum map key so the interpolation lookup is always valid before turret sets a real
+  // distance.
   private double targetDistance = 1.320;
 
   public void setTargetDistance(double distance) {

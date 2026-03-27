@@ -279,11 +279,12 @@ public class ModuleIOTalonFX implements ModuleIO {
   // TODO: Placeholder values, should work okay
   @Override
   public void setDriveSupplyCurrentLimit(double amps) {
-    var config = new com.ctre.phoenix6.configs.CurrentLimitsConfigs()
-        .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(amps)
-        .withSupplyCurrentLowerLimit(amps * 0.75)
-        .withSupplyCurrentLowerTime(2.0);
+    var config =
+        new com.ctre.phoenix6.configs.CurrentLimitsConfigs()
+            .withSupplyCurrentLimitEnable(true)
+            .withSupplyCurrentLimit(amps)
+            .withSupplyCurrentLowerLimit(amps * 0.75)
+            .withSupplyCurrentLowerTime(2.0);
     driveTalon.getConfigurator().apply(config, 0.01);
   }
 }
