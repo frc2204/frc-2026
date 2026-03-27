@@ -160,7 +160,6 @@ public class ObjectDetection extends SubsystemBase {
 
       for (TrackedFuel tracked : trackedFuels) {
         double dist = tracked.fieldPosition.getDistance(newDet);
-        System.out.println(Units.metersToInches(dist));
         if (dist < closestDist) {
           closestDist = dist;
           closest = tracked;
