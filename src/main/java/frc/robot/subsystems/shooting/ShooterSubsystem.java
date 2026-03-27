@@ -178,8 +178,8 @@ public class ShooterSubsystem extends SubsystemBase {
     config2.CurrentLimits.StatorCurrentLimitEnable = true;
     shooterMotor2.getConfigurator().apply(config2);
     shooterMotor2.setControl(new Follower(shooterMotor.getDeviceID(), MotorAlignmentValue.Opposed));
-    // com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(
-    //     shooterMotor, shooterMotor2);
+    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(
+        shooterMotor, shooterMotor2);
 
     for (double key : DISTANCE_KEYS) {
       rpmTrimOverlay.put(key, 0.0);
