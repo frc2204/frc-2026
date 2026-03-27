@@ -16,6 +16,7 @@ import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.Constants;
 import frc.robot.LimelightHelpers;
 import frc.robot.util.FieldConstants;
 import frc.robot.util.geometry.AllianceFlipUtil;
@@ -128,7 +129,7 @@ public class TurretSubsystem extends SubsystemBase {
 
     turretMotor.getConfigurator().apply(config);
     turretMotor.setPosition(0 / 360.0);
-    // com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(turretMotor);
+    com.ctre.phoenix6.hardware.ParentDevice.optimizeBusUtilizationForAll(turretMotor);
   }
 
   @Override
@@ -218,6 +219,9 @@ public class TurretSubsystem extends SubsystemBase {
     double targetRotations = targetAngle.getDegrees() / 360.0;
 //    turretMotor.setControl(
 //        motionMagicRequest.withPosition(targetRotations)); // change back for turret to work
+    turretMotor.setControl(
+        motionMagicRequest.withPosition(targetRotations)); // change back for turret to work
+
 
     org.littletonrobotics.junction.Logger.recordOutput(
         "Turret/ManualOffsetDeg", turretManualOffsetDeg);
@@ -513,8 +517,10 @@ public class TurretSubsystem extends SubsystemBase {
               Math.toRadians(getVelocityDegPerSec()));
     }
 
-    angle = MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
-    return angle;
+    double clampedAngle =
+        MathUtil.clamp(angle, Math.toRadians(MIN_ANGLE), Math.toRadians(MAX_ANGLE));
+    atSoftLimit = Math.abs(clampedAngle - angle) > Math.toRadians(1.0);
+    return clampedAngle;
   }
   // ── END LEAD MODE SWITCH ──────────────────────────────────────────────
 
