@@ -79,7 +79,9 @@ public class Module {
 
     // Apply setpoints
     io.setDriveVelocity(state.speedMetersPerSecond / constants.WheelRadius);
-    io.setTurnPosition(state.angle);
+    if (Math.abs(state.speedMetersPerSecond) > 0.01) {
+      io.setTurnPosition(state.angle);
+    }
   }
 
   /** Runs the module with the specified output while controlling to zero degrees. */
