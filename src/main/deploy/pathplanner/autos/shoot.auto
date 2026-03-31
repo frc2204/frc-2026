@@ -9,6 +9,12 @@
           "data": {
             "commands": [
               {
+                "type": "path",
+                "data": {
+                  "pathName": "middleMoveBackShoot"
+                }
+              },
+              {
                 "type": "named",
                 "data": {
                   "name": "spinUpShooter"
@@ -44,7 +50,7 @@
       ]
     }
   },
-  "resetOdom": false,
+  "resetOdom": true,
   "folder": null,
   "choreoAuto": false
 }

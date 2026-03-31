@@ -16,7 +16,6 @@ import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.Constants;
 import frc.robot.LimelightHelpers;
 import frc.robot.util.FieldConstants;
 import frc.robot.util.geometry.AllianceFlipUtil;
@@ -49,8 +48,8 @@ public class TurretSubsystem extends SubsystemBase {
   private final MotionMagicVoltage motionMagicRequest =
       new MotionMagicVoltage(0).withEnableFOC(true);
 
-  private static final double MAX_ANGLE = 125;
-  private static final double MIN_ANGLE = -125;
+  private static final double MAX_ANGLE = 90;
+  private static final double MIN_ANGLE = -135;
   private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 38279.9988;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 15000;
@@ -217,11 +216,10 @@ public class TurretSubsystem extends SubsystemBase {
     double offsetDeg = targetAngle.getDegrees() + turretManualOffsetDeg;
     targetAngle = Rotation2d.fromDegrees(MathUtil.clamp(offsetDeg, MIN_ANGLE, MAX_ANGLE));
     double targetRotations = targetAngle.getDegrees() / 360.0;
-//    turretMotor.setControl(
-//        motionMagicRequest.withPosition(targetRotations)); // change back for turret to work
     turretMotor.setControl(
         motionMagicRequest.withPosition(targetRotations)); // change back for turret to work
-
+    turretMotor.setControl(
+        motionMagicRequest.withPosition(targetRotations)); // change back for turret to work
 
     org.littletonrobotics.junction.Logger.recordOutput(
         "Turret/ManualOffsetDeg", turretManualOffsetDeg);

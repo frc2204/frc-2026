@@ -111,13 +111,17 @@ public class ModuleIOTalonFX implements ModuleIO {
     driveConfig.CurrentLimits.StatorCurrentLimit = constants.SlipCurrent;
     driveConfig.CurrentLimits.StatorCurrentLimitEnable = true;
     driveConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
-    driveConfig.CurrentLimits.SupplyCurrentLimit = 40.0;
-    driveConfig.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
+    driveConfig.CurrentLimits.SupplyCurrentLimit = 60.0;
+    driveConfig.CurrentLimits.SupplyCurrentLowerLimit = 40.0;
     driveConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
-    driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.15;
-    driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.15;
-    driveConfig.OpenLoopRamps.TorqueOpenLoopRampPeriod = 0.15;
-    driveConfig.ClosedLoopRamps.TorqueClosedLoopRampPeriod = 0.15;
+    driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0.01;
+    driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.01;
+    driveConfig.OpenLoopRamps.TorqueOpenLoopRampPeriod = 0.01;
+    driveConfig.ClosedLoopRamps.TorqueClosedLoopRampPeriod = 0.01;
+    //    driveConfig.OpenLoopRamps.VoltageOpenLoopRampPeriod = 0;
+    //    driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0;
+    //    driveConfig.OpenLoopRamps.TorqueOpenLoopRampPeriod = 0;
+    //    driveConfig.ClosedLoopRamps.TorqueClosedLoopRampPeriod = 0;
     driveConfig.MotorOutput.Inverted =
         constants.DriveMotorInverted
             ? InvertedValue.Clockwise_Positive
