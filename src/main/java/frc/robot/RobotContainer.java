@@ -77,8 +77,8 @@ public class RobotContainer {
   private final PowerDistribution pdh = new PowerDistribution(45, ModuleType.kRev);
 
   // Controllers
-  private final CommandPS5Controller ps5Controller = new CommandPS5Controller(0);
-  private final CommandXboxController xboxController = new CommandXboxController(1);
+  private final CommandXboxController driverController = new CommandXboxController(0);
+  private final CommandPS5Controller operatorController = new CommandPS5Controller(1);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
@@ -257,13 +257,15 @@ public class RobotContainer {
     // Default command, field-relative drive with speed modes
     // PS button toggles intake drive mode (heading follows stick direction)
     double slowFactor = 0.65; // tune
-    var xSup = (DoubleSupplier) () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor);
-    var ySup = (DoubleSupplier) () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor);
+    var xSup =
+        (DoubleSupplier) () -> -driverController.getLeftY() * getDriveSpeedFactor(slowFactor);
+    var ySup =
+        (DoubleSupplier) () -> -driverController.getLeftX() * getDriveSpeedFactor(slowFactor);
     var omegaSup =
-        (DoubleSupplier) () -> -ps5Controller.getRightX() * getDriveSpeedFactor(slowFactor);
+        (DoubleSupplier) () -> -driverController.getRightX() * getDriveSpeedFactor(slowFactor);
 
-    ps5Controller
-        .PS()
+    driverController
+        .povUp()
         .onTrue(
             Commands.sequence(
                 Commands.runOnce(
@@ -282,8 +284,8 @@ public class RobotContainer {
                 xSup,
                 ySup,
                 () -> {
-                  double x = -ps5Controller.getLeftY();
-                  double y = -ps5Controller.getLeftX();
+                  double x = -driverController.getLeftY();
+                  double y = -driverController.getLeftX();
                   if (Math.hypot(x, y) > 0.1) {
                     double heading = Math.atan2(y, x);
                     boolean isFlipped =
@@ -297,19 +299,19 @@ public class RobotContainer {
             DriveCommands.joystickDrive(drive, xSup, ySup, omegaSup),
             () -> intakeDriveEnabled));
 
-    // Square: toggle override speed (full speed, ignores shooting slowdown)
-    ps5Controller.square().onTrue(Commands.runOnce(() -> overrideSpeed = !overrideSpeed));
+    // X: toggle override speed (full speed, ignores shooting slowdown)
+    driverController.back().onTrue(Commands.runOnce(() -> overrideSpeed = !overrideSpeed));
 
     // TODO:  make triangle spin up and down
 
     // R3: snap drivetrain heading to nearest 0° or 180° (intake faces forward/backward)
-    ps5Controller
-        .R3()
+    driverController
+        .povDown()
         .whileTrue(
             DriveCommands.joystickDriveAtAngle(
                 drive,
-                () -> -ps5Controller.getLeftY() * getDriveSpeedFactor(slowFactor),
-                () -> -ps5Controller.getLeftX() * getDriveSpeedFactor(slowFactor),
+                () -> -driverController.getLeftY() * getDriveSpeedFactor(slowFactor),
+                () -> -driverController.getLeftX() * getDriveSpeedFactor(slowFactor),
                 () -> {
                   double heading = drive.getRotation().getRadians();
                   // Normalize to [-PI, PI] then snap to 0 or PI
@@ -319,12 +321,12 @@ public class RobotContainer {
                   return Rotation2d.kZero;
                 }));
 
-    // Cross: toggle slow mode
-    ps5Controller.cross().onTrue(Commands.runOnce(() -> slowMode = !slowMode));
+    // A: toggle slow mode
+    driverController.start().onTrue(Commands.runOnce(() -> slowMode = !slowMode));
 
-    // Options: reset gyro to 0°
-    ps5Controller
-        .options()
+    // L3: reset gyro to 0°
+    driverController
+        .leftStick()
         .onTrue(
             Commands.runOnce(
                     () ->
@@ -333,38 +335,41 @@ public class RobotContainer {
                     drive)
                 .ignoringDisable(true));
 
-    // Triangle: spin up shooter
-    ps5Controller
-        .triangle()
+    // Y: spin up shooter
+    driverController
+        .y()
         .onTrue(
             Commands.runOnce(
                 () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
 
-    // Circle: idle shooter
-    ps5Controller
-        .circle()
+    // B: idle shooter
+    driverController
+        .b()
         .onTrue(
             Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
 
     // R2 or L2: either trigger activates shooting system
     // Both together: force fire override
-    ps5Controller
-        .R2()
-        .or(ps5Controller.L2())
+    driverController
+        .rightTrigger()
+        .or(driverController.leftTrigger())
         .whileTrue(
             ShootingCommands.shootWhileHeld(
                 turret,
                 shooter,
                 hood,
                 drive::getPose,
-                () -> ps5Controller.R2().getAsBoolean() && ps5Controller.L2().getAsBoolean(),
-                ps5Controller.R2()::getAsBoolean))
+                () ->
+                    driverController.rightTrigger().getAsBoolean()
+                        && driverController.leftTrigger().getAsBoolean(),
+                driverController.rightTrigger()::getAsBoolean))
         .onFalse(ShootingCommands.spinUp(shooter));
 
-    // L1: toggle intake deploy/stow (debounced)
-    ps5Controller // later ask if daniel wants it to be like hold for 1 sec and stop spinning intake
+    // LB: toggle intake deploy/stow (debounced)
+    driverController // later ask if daniel wants it to be like hold for 1 sec and stop spinning
+        // intake
         // but its still down
-        .L1()
+        .leftBumper()
         .onTrue(
             Commands.runOnce(
                 () -> {
@@ -380,9 +385,9 @@ public class RobotContainer {
                 },
                 intake));
 
-    // R1: override — reverse handoff, indexer, intake while held
-    ps5Controller
-        .R1()
+    // RB: override — reverse handoff, indexer, intake while held
+    driverController
+        .rightBumper()
         .whileTrue(
             Commands.runOnce(
                 () -> {
@@ -424,80 +429,78 @@ public class RobotContainer {
 
     tenSecWarning
         .whileTrue(
-            Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.3)))
+            Commands.run(() -> driverController.getHID().setRumble(RumbleType.kBothRumble, 0.3)))
         .onFalse(
-            Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
+            Commands.runOnce(
+                () -> driverController.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
 
     fiveSecWarning
         .whileTrue(
-            Commands.run(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
+            Commands.run(() -> driverController.getHID().setRumble(RumbleType.kBothRumble, 1.0)))
         .onFalse(
-            Commands.runOnce(() -> ps5Controller.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
+            Commands.runOnce(
+                () -> driverController.getHID().setRumble(RumbleType.kBothRumble, 0.0)));
 
-    // ── XBOX CONTROLLER (port 1) — operator live tuning ──────────────────
-    // Y: +25 RPM at nearest distance point
-    xboxController
-        .y()
+    // ── PS5 CONTROLLER (port 1) — operator live tuning ──────────────────
+    // Triangle: +25 RPM at nearest distance point
+    operatorController
+        .triangle()
         .onTrue(
             Commands.runOnce(
                 () -> shooter.adjustRpmTrimAtDistance(shooter.getTargetDistance(), 25.0), shooter));
 
-    // A: -25 RPM at nearest distance point
-    xboxController
-        .a()
+    // Cross: -25 RPM at nearest distance point
+    operatorController
+        .cross()
         .onTrue(
             Commands.runOnce(
                 () -> shooter.adjustRpmTrimAtDistance(shooter.getTargetDistance(), -25.0),
                 shooter));
 
-    // Right Trigger: +25 RPM global (all distances)
-    xboxController
-        .rightTrigger(0.5)
+    // R2: +25 RPM global (all distances)
+    operatorController
+        .R2()
         .onTrue(Commands.runOnce(() -> shooter.adjustGlobalRpmTrim(25.0), shooter));
 
-    // Left Trigger: -25 RPM global (all distances)
-    xboxController
-        .leftTrigger(0.5)
+    // L2: -25 RPM global (all distances)
+    operatorController
+        .L2()
         .onTrue(Commands.runOnce(() -> shooter.adjustGlobalRpmTrim(-25.0), shooter));
 
     // POV Up: hood +0.014 rotations (~5°) at nearest distance point
-    xboxController
+    operatorController
         .povUp()
         .onTrue(
             Commands.runOnce(
                 () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), 0.014), hood));
 
     // POV Down: hood -0.014 rotations (~5°) at nearest distance point
-    xboxController
+    operatorController
         .povDown()
         .onTrue(
             Commands.runOnce(
                 () -> hood.adjustHoodTrimAtDistance(hood.getTargetDistance(), -0.014), hood));
 
-    // Right Bumper: hood +0.014 rotations global
-    xboxController
-        .rightBumper()
-        .onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(0.014), hood));
+    // R1: hood +0.014 rotations global
+    operatorController.R1().onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(0.014), hood));
 
-    // Left Bumper: hood -0.014 rotations global
-    xboxController
-        .leftBumper()
-        .onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(-0.014), hood));
+    // L1: hood -0.014 rotations global
+    operatorController.L1().onTrue(Commands.runOnce(() -> hood.adjustGlobalHoodTrim(-0.014), hood));
 
     // Left Stick X: turret offset ±17° (position-based, centered = 0)
-    new Trigger(() -> Math.abs(xboxController.getLeftX()) > 0.1)
+    new Trigger(() -> Math.abs(operatorController.getLeftX()) > 0.1)
         .whileTrue(
             Commands.run(
-                () -> turret.setTurretManualOffset(xboxController.getLeftX() * 17.0), turret))
+                () -> turret.setTurretManualOffset(operatorController.getLeftX() * 17.0), turret))
         .onFalse(Commands.runOnce(() -> turret.resetTurretManualOffset(), turret));
 
     // Right Stick Y: manual intake deploy position control
-    new Trigger(() -> Math.abs(xboxController.getRightY()) > 0.1)
+    new Trigger(() -> Math.abs(operatorController.getRightY()) > 0.1)
         .whileTrue(
             Commands.run(
                 () -> {
                   intake.setState(IntakeSubsystem.IntakeState.MANUAL);
-                  intake.setManualVoltage(-xboxController.getRightY() * 4.0); // tune voltage
+                  intake.setManualVoltage(-operatorController.getRightY() * 4.0); // tune voltage
                 },
                 intake))
         .onFalse(
@@ -508,9 +511,9 @@ public class RobotContainer {
                 },
                 intake));
 
-    // Back: reset all trims
-    xboxController
-        .back()
+    // PS: reset all trims
+    operatorController
+        .PS()
         .onTrue(
             Commands.runOnce(
                 () -> {
@@ -636,7 +639,9 @@ public class RobotContainer {
 
   // returns from 0.3 to 0.8 when in alliance zone (shooting at hub), 1.0 otherwise
   private double getShootingSpeedFactor() {
-    boolean shooting = ps5Controller.R2().getAsBoolean() || ps5Controller.L2().getAsBoolean();
+    boolean shooting =
+        driverController.rightTrigger().getAsBoolean()
+            || driverController.leftTrigger().getAsBoolean();
     if (!shooting) return 1.0;
 
     Pose2d pose = drive.getPose();

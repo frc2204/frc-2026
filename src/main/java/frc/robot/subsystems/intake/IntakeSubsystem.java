@@ -36,7 +36,7 @@ public class IntakeSubsystem extends SubsystemBase {
   private static final double GEAR_RATIO = 1;
 
   private static final double STOW_POSITION = 0.5;
-  private static final double DEPLOY_POSITION = -23.40; // ~90 degrees in mechanism rotations
+  private static final double DEPLOY_POSITION = -18.40; // ~90 degrees in mechanism rotations 23,40
 
   // Slot 0 — deploy (down)
   private static final double DEPLOY_KS = 0.37; // tune
@@ -47,8 +47,8 @@ public class IntakeSubsystem extends SubsystemBase {
   private static final double STOW_P = 1.5; // tune
   private static final double STOW_D = 0.0; // tune
 
-  private static final double INTAKE_RPS = 1000.0 / 60.0; // tune
-  private static final double EJECT_RPS = -1000.0 / 60.0; // tune
+  private static final double INTAKE_RPS = 2500.0 / 60.0; // tune
+  private static final double EJECT_RPS = -2500.0 / 60.0; // tune
 
   // roller VelocityTorqueCurrentFOC PID (units: amps)
   private static final double ROLLER_KS = 3.0; // amps — overcome friction, tune
@@ -96,8 +96,8 @@ public class IntakeSubsystem extends SubsystemBase {
     config.MotionMagic.MotionMagicCruiseVelocity = 40; // mechanism rps (~180 deg/s)
     config.MotionMagic.MotionMagicAcceleration = 40; // mechanism rps^2
 
-//    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
-//    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+    //    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
+    //    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
 
     deployRightMotor.getConfigurator().apply(config);
 
@@ -198,7 +198,7 @@ public class IntakeSubsystem extends SubsystemBase {
       case MANUAL:
         deployRightMotor.setControl(voltageRequest.withOutput(manualVoltage));
         deployLeftMotor.setControl(voltageRequest.withOutput(manualVoltage));
-        rollerMotor.setControl(neutralRequest);
+        rollerMotor.setControl(rollerVelocityRequest.withVelocity(INTAKE_RPS));
         break;
     }
 

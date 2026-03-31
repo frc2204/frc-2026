@@ -28,16 +28,17 @@ public class IndexerSubsystem extends SubsystemBase {
   private static final int INDEXER_MOTOR_ID = 40; // tune
 
   private static final double FEED_VOLTAGE_PEAK = -12.0; // first second burst
-  private static final double FEED_VOLTAGE_STEADY = -7.0; // after 1s
+  private static final double FEED_VOLTAGE_STEADY = -6.0; // after 1s
   private static final double PEAK_DURATION = 1.0; // seconds
-  private static final double REVERSE_VOLTAGE = 4.0; // tune
+  private static final double RAMP_DURATION = 1.0; // seconds to ramp up
+  private static final double REVERSE_VOLTAGE = 12.0; // tune
 
   private final SparkMax indexerMotor = new SparkMax(INDEXER_MOTOR_ID, MotorType.kBrushless);
   private double feedStartTime = -1.0;
 
   private IndexerSubsystem() {
     SparkMaxConfig config = new SparkMaxConfig();
-    config.idleMode(IdleMode.kCoast).smartCurrentLimit(25).inverted(false);
+    config.idleMode(IdleMode.kCoast).smartCurrentLimit(40).inverted(false);
     config
         .signals
         .primaryEncoderPositionPeriodMs(500)
@@ -59,11 +60,10 @@ public class IndexerSubsystem extends SubsystemBase {
         if (feedStartTime < 0) {
           feedStartTime = Timer.getFPGATimestamp();
         }
-        double feedVoltage =
-            (Timer.getFPGATimestamp() - feedStartTime < PEAK_DURATION)
-                ? FEED_VOLTAGE_PEAK
-                : FEED_VOLTAGE_STEADY;
-        indexerMotor.setVoltage(feedVoltage);
+        double elapsed = Timer.getFPGATimestamp() - feedStartTime;
+        double targetVoltage = (elapsed < PEAK_DURATION) ? FEED_VOLTAGE_PEAK : FEED_VOLTAGE_STEADY;
+        double rampScale = Math.min(elapsed / RAMP_DURATION, 1.0);
+        indexerMotor.setVoltage(targetVoltage * rampScale);
         break;
       case REVERSING:
         indexerMotor.setVoltage(REVERSE_VOLTAGE);
