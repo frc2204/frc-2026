@@ -223,6 +223,7 @@ public class TurretSubsystem extends SubsystemBase {
 
     org.littletonrobotics.junction.Logger.recordOutput(
         "Turret/ManualOffsetDeg", turretManualOffsetDeg);
+    org.littletonrobotics.junction.Logger.recordOutput("Turret/CanShoot", canShoot());
   }
 
   private Rotation2d findBestTarget(Rotation2d fieldRelativeTarget, double currentAbsoluteDeg) {
@@ -386,6 +387,18 @@ public class TurretSubsystem extends SubsystemBase {
 
   public double getTurretManualOffset() {
     return turretManualOffsetDeg;
+  }
+
+  /** Returns true when the robot is in the alliance zone and not inside the tower/ladder. */
+  public boolean canShoot() {
+    if (robotPose == null) return false;
+    if (FieldConstants.isInsideTower(robotPose)) return false;
+
+    if (AllianceFlipUtil.shouldFlip()) {
+      return robotPose.getX() > FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+    } else {
+      return robotPose.getX() < FieldConstants.ALLIANCEWALLTOHUB;
+    }
   }
 
   // for passing
