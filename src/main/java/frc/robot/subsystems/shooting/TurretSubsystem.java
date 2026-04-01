@@ -422,7 +422,7 @@ public class TurretSubsystem extends SubsystemBase {
     double robotPosex = AllianceFlipUtil.apply(robotPose).getX();
     double midY = FieldConstants.FIELDWIDTH / 2.0;
     double midX = FieldConstants.FIELDLENGTH / 2.0;
-    boolean nearMidY = Math.abs(robotPose.getY() - midY) < FieldConstants.FIELDWIDTH * 0.25; // tune
+    boolean nearMidY = Math.abs(robotPose.getY() - midY) < FieldConstants.FIELDWIDTH * 0.10; // tune
     boolean pastMidX = robotPosex > midX - 2.0; // tune
     if (robotPosex < FieldConstants.ALLIANCEWALLTOHUB) {
       return false;
@@ -539,16 +539,24 @@ public class TurretSubsystem extends SubsystemBase {
     Translation2d hubPos = getHubPosition();
 
     // Our wall and opponent wall X in blue-origin coords
-    double ourWallX = AllianceFlipUtil.shouldFlip() ? FieldConstants.FIELDLENGTH : 0.0;
-    double opponentWallX = AllianceFlipUtil.shouldFlip() ? 0.0 : FieldConstants.FIELDLENGTH;
+    double ourWallX =
+        AllianceFlipUtil.shouldFlip()
+            ? FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB
+            : FieldConstants.ALLIANCEWALLTOHUB;
+    double opponentBumpX =
+        AllianceFlipUtil.shouldFlip()
+            ? FieldConstants.ALLIANCEWALLTOHUB
+            : FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
 
     // Our bumps (pass toward our alliance wall) vs opponent bumps (pass away from hub)
-    Translation2d topOurBump = new Translation2d(ourWallX, FieldConstants.TOPBUMPMID.getY());
-    Translation2d bottomOurBump = new Translation2d(ourWallX, FieldConstants.BOTTOMBUMPMID.getY());
+    Translation2d topOurBump = AllianceFlipUtil.apply(FieldConstants.TOPBUMPMID.getTranslation());
+    Translation2d bottomOurBump =
+        AllianceFlipUtil.apply(FieldConstants.BOTTOMBUMPMID.getTranslation());
     Translation2d topOpponentBump =
-        new Translation2d(opponentWallX, FieldConstants.TOPBUMPMID.getY());
+        new Translation2d(opponentBumpX, AllianceFlipUtil.applyY(FieldConstants.TOPBUMPMID.getY()));
     Translation2d bottomOpponentBump =
-        new Translation2d(opponentWallX, FieldConstants.BOTTOMBUMPMID.getY());
+        new Translation2d(
+            opponentBumpX, AllianceFlipUtil.applyY(FieldConstants.BOTTOMBUMPMID.getY()));
 
     // Three zones: alliance, middle, opponent's side
     // Alliance zone boundary: our hub
@@ -572,7 +580,10 @@ public class TurretSubsystem extends SubsystemBase {
       onOpponentSide = robotPose.getX() > opponentHubX;
     }
 
-    boolean topHalf = robotPose.getY() > FieldConstants.FIELDWIDTH / 2;
+    boolean topHalf =
+        AllianceFlipUtil.shouldFlip()
+            ? robotPose.getY() < FieldConstants.FIELDWIDTH / 2
+            : robotPose.getY() > FieldConstants.FIELDWIDTH / 2;
 
     if (inAllianceZone) {
       targetPose = hubPos;
@@ -580,11 +591,15 @@ public class TurretSubsystem extends SubsystemBase {
       // Hub blocks line-of-sight to our bumps — aim at opponent's bumps
       targetPose = topHalf ? topOpponentBump : bottomOpponentBump;
     } else {
-      // Middle — aim at depot if on depot side, otherwise our bump
-      Translation2d depotPos = AllianceFlipUtil.apply(FieldConstants.DEPOTPOSE.getTranslation());
-      boolean depotIsTopHalf = !AllianceFlipUtil.shouldFlip();
-      if (topHalf == depotIsTopHalf) {
-        targetPose = depotPos;
+      // Middle — aim at outpost if on outpost side, otherwise our bump
+      Translation2d outpostPos =
+          AllianceFlipUtil.apply(FieldConstants.OUTPOSTPOSE.getTranslation());
+      boolean outpostIsTopHalf =
+          AllianceFlipUtil.shouldFlip()
+              ? outpostPos.getY() < FieldConstants.FIELDWIDTH / 2
+              : outpostPos.getY() > FieldConstants.FIELDWIDTH / 2;
+      if (topHalf == outpostIsTopHalf) {
+        targetPose = outpostPos;
       } else {
         targetPose = topHalf ? topOurBump : bottomOurBump;
       }

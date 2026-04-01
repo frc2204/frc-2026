@@ -52,6 +52,9 @@ public class FieldConstants {
   public static final Pose2d DEPOTPOSE =
       new Pose2d(0.3429, 5.963158, new Rotation2d()); // middle of depot
 
+  public static final Pose2d OUTPOSTPOSE =
+      new Pose2d(0.0, 1.0, new Rotation2d()); // middle of outpost
+
   public static final double TRENCHWIDTH = 1.284986;
 
   public static final Pose2d TOPLEFTSIDETRENCH =
@@ -81,7 +84,10 @@ public class FieldConstants {
 
   // midpoint of bump zone for passing targets when on opposite alliance
   public static final Pose2d TOPBUMPMID =
-      new Pose2d(0, FIELDWIDTH - TRENCHWIDTH - WALLWIDTH - BUMPWIDTH / 2.0, new Rotation2d());
+      new Pose2d(
+          ALLIANCEWALLTOHUB,
+          FIELDWIDTH - TRENCHWIDTH - WALLWIDTH - BUMPWIDTH / 2.0,
+          new Rotation2d());
   public static final Pose2d BOTTOMBUMPMID =
-      new Pose2d(0, TRENCHWIDTH + WALLWIDTH + BUMPWIDTH / 2.0, new Rotation2d());
+      new Pose2d(ALLIANCEWALLTOHUB, TRENCHWIDTH + WALLWIDTH + BUMPWIDTH / 2.0, new Rotation2d());
 }
