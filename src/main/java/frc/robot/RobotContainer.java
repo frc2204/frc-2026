@@ -88,6 +88,8 @@ public class RobotContainer {
   private boolean overrideSpeed = false;
   private boolean intakeDeployed = false;
   private double lastIntakeToggleTime = 0;
+  private boolean shootingToggled = false;
+  private double lastShootingToggleTime = 0;
   private boolean intakeDriveEnabled = false;
   private Rotation2d intakeHeading = Rotation2d.kZero;
 
@@ -262,7 +264,8 @@ public class RobotContainer {
     var ySup =
         (DoubleSupplier) () -> -driverController.getLeftX() * getDriveSpeedFactor(slowFactor);
     var omegaSup =
-        (DoubleSupplier) () -> -driverController.getRightX() * getDriveSpeedFactor(slowFactor);
+        (DoubleSupplier)
+            () -> -driverController.getRightX() * getDriveSpeedFactor(slowFactor) * 0.75;
 
     driverController
         .povUp()
@@ -299,8 +302,9 @@ public class RobotContainer {
             DriveCommands.joystickDrive(drive, xSup, ySup, omegaSup),
             () -> intakeDriveEnabled));
 
-    // X: toggle override speed (full speed, ignores shooting slowdown)
-    driverController.back().onTrue(Commands.runOnce(() -> overrideSpeed = !overrideSpeed));
+    // Back: hold for override speed (full speed, ignores shooting slowdown)
+    driverController.back().onTrue(Commands.runOnce(() -> overrideSpeed = true));
+    driverController.back().onFalse(Commands.runOnce(() -> overrideSpeed = false));
 
     // TODO:  make triangle spin up and down
 
@@ -342,28 +346,42 @@ public class RobotContainer {
             Commands.runOnce(
                 () -> shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP), shooter));
 
-    // B: idle shooter
+    // B: idle shooter + turn off shooting toggle
     driverController
         .b()
         .onTrue(
-            Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.IDLE), shooter));
+            Commands.runOnce(
+                () -> {
+                  shooter.setState(ShooterSubsystem.ShooterState.IDLE);
+                  shootingToggled = false;
+                },
+                shooter));
 
-    // R2 or L2: either trigger activates shooting system
-    // Both together: force fire override
+    // R2: toggle shooting on/off
+    // L2 (while shooting toggled): force fire override
     driverController
         .rightTrigger()
-        .or(driverController.leftTrigger())
+        .onTrue(
+            Commands.runOnce(
+                () -> {
+                  double now = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+                  if (now - lastShootingToggleTime < 0.3) return; // debounce
+                  lastShootingToggleTime = now;
+                  shootingToggled = !shootingToggled;
+                  if (!shootingToggled) {
+                    shooter.setState(ShooterSubsystem.ShooterState.SPIN_UP);
+                  }
+                }));
+
+    new edu.wpi.first.wpilibj2.command.button.Trigger(() -> shootingToggled)
         .whileTrue(
             ShootingCommands.shootWhileHeld(
                 turret,
                 shooter,
                 hood,
                 drive::getPose,
-                () ->
-                    driverController.rightTrigger().getAsBoolean()
-                        && driverController.leftTrigger().getAsBoolean(),
-                driverController.rightTrigger()::getAsBoolean))
-        .onFalse(ShootingCommands.spinUp(shooter));
+                () -> shootingToggled && driverController.leftTrigger().getAsBoolean(),
+                () -> shootingToggled));
 
     // LB: toggle intake deploy/stow (debounced)
     driverController // later ask if daniel wants it to be like hold for 1 sec and stop spinning
@@ -581,6 +599,14 @@ public class RobotContainer {
     SmartDashboard.putNumber(
         "Match/Match Time", edu.wpi.first.wpilibj.DriverStation.getMatchTime());
 
+    // Driver state
+    SmartDashboard.putBoolean("Driver/OverrideSpeed", overrideSpeed);
+    SmartDashboard.putBoolean("Driver/ShootingToggled", shootingToggled);
+    SmartDashboard.putBoolean("Driver/SlowMode", slowMode);
+    SmartDashboard.putBoolean(
+        "Driver/ShooterOverride", shooter.getState() == ShooterSubsystem.ShooterState.OVERRIDE);
+    SmartDashboard.putBoolean("Driver/IntakeDrive", intakeDriveEnabled);
+
     // Indexer
     SmartDashboard.putString("Indexer/State", indexer.getState().name());
 
@@ -634,34 +660,26 @@ public class RobotContainer {
     return getShootingSpeedFactor();
   }
 
-  // right now try with just a constant speed like slowfactor untill shooting on the move is
-  // better??
-
-  // returns from 0.3 to 0.8 when in alliance zone (shooting at hub), 1.0 otherwise
   private double getShootingSpeedFactor() {
-    boolean shooting =
-        driverController.rightTrigger().getAsBoolean()
-            || driverController.leftTrigger().getAsBoolean();
-    if (!shooting) return 1.0;
+    if (!shootingToggled) return 1.0;
+    return 0.65; // static slow factor while shooting — tune
 
-    Pose2d pose = drive.getPose();
-    double hubDist;
-    if (AllianceFlipUtil.shouldFlip()) {
-      // red alliance so hub is near x = FIELDLENGTH - ALLIANCEWALLTOHUB
-      double hubX = FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
-      if (pose.getX() < hubX) return 1.0; // not in alliance zone, full speed
-      hubDist = pose.getX() - hubX;
-    } else {
-      // blue hub is near x = ALLIANCEWALLTOHUB
-      double hubX = FieldConstants.ALLIANCEWALLTOHUB;
-      if (pose.getX() > hubX) return 1.0; // not in alliance zone, full speed
-      hubDist = hubX - pose.getX();
-    }
-
-    double minSpeed = 0.3; // tune: speed when right at hub
-    double maxSpeed = 0.8; // tune: cap speed even at edge of alliance zone
-    double maxDist = FieldConstants.ALLIANCEWALLTOHUB;
-    double factor = minSpeed + (maxSpeed - minSpeed) * Math.min(hubDist / maxDist, 1.0);
-    return factor;
+    // ── dynamic distance-based speed (commented out) ──────────────────────
+    // Pose2d pose = drive.getPose();
+    // double hubDist;
+    // if (AllianceFlipUtil.shouldFlip()) {
+    //   double hubX = FieldConstants.FIELDLENGTH - FieldConstants.ALLIANCEWALLTOHUB;
+    //   if (pose.getX() < hubX) return 1.0;
+    //   hubDist = pose.getX() - hubX;
+    // } else {
+    //   double hubX = FieldConstants.ALLIANCEWALLTOHUB;
+    //   if (pose.getX() > hubX) return 1.0;
+    //   hubDist = hubX - pose.getX();
+    // }
+    // double minSpeed = 0.3;
+    // double maxSpeed = 0.8;
+    // double maxDist = FieldConstants.ALLIANCEWALLTOHUB;
+    // double factor = minSpeed + (maxSpeed - minSpeed) * Math.min(hubDist / maxDist, 1.0);
+    // return factor;
   }
 }

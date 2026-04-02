@@ -1,7 +1,8 @@
 package frc.robot.subsystems.handoff;
 
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.controls.NeutralOut;
+import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -9,6 +10,7 @@ import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.intake.IndexerSubsystem;
+import frc.robot.subsystems.intake.IntakeSubsystem;
 import frc.robot.subsystems.shooting.ShooterSubsystem;
 import frc.robot.subsystems.shooting.ShooterSubsystem.ShooterState;
 import org.littletonrobotics.junction.Logger;
@@ -24,10 +26,12 @@ public class HandoffSubsystem extends SubsystemBase {
   private static final int HANDOFF_MOTOR_ID = 41;
   private static final int BEAM_BREAK_DIO = 0;
 
-  private static final double FEED_VOLTAGE_PEAK = -12.0; // first second burst
-  private static final double FEED_VOLTAGE_STEADY = -12.0; // after 1s
-  private static final double PEAK_DURATION = 1.0; // seconds
-  private static final double REVERSE_VOLTAGE = 4.0; // tune
+  private static final double FEED_RPS = -100.0; // tune — feed speed in RPS
+  private static final double REVERSE_RPS = 30.0; // tune — unjam/reverse speed in RPS
+  private static final double STAGE_RPS = -30.0; // tune — slow feed to stage ball at beam break
+
+  private static final double HANDOFF_KS = 3.0; // amps — overcome friction, tune
+  private static final double HANDOFF_KP = 3.0; // amps per RPS error, tune
 
   // if beam break is blocked for this long reverse
   private static final double JAM_TIME_SECONDS = 0.5; // tune
@@ -36,11 +40,11 @@ public class HandoffSubsystem extends SubsystemBase {
       0.5; // seconds — min time to keep feeding. 0 = no latch
 
   private final TalonFX handoffMotor = new TalonFX(HANDOFF_MOTOR_ID);
-  private final VoltageOut voltageRequest = new VoltageOut(0.0).withEnableFOC(true);
+  private final VelocityTorqueCurrentFOC velocityRequest = new VelocityTorqueCurrentFOC(0);
+  private final NeutralOut neutralRequest = new NeutralOut();
   private final DigitalInput beamBreak = new DigitalInput(BEAM_BREAK_DIO);
   private boolean forceReverse = false;
 
-  private double feedStartTime = -1.0;
   private double feedLatchStartTime = -1.0;
   private double blockedStartTime = -1.0;
   private double unjamStartTime = -1.0;
@@ -54,11 +58,13 @@ public class HandoffSubsystem extends SubsystemBase {
     config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
     config.CurrentLimits.StatorCurrentLimitEnable = true;
-    config.CurrentLimits.StatorCurrentLimit = 60;
+    config.CurrentLimits.StatorCurrentLimit = 120;
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
     config.CurrentLimits.SupplyCurrentLimit = 40; // peak spike
     config.CurrentLimits.SupplyCurrentLowerLimit = 25; // steady state after spike
     config.CurrentLimits.SupplyCurrentLowerTime = 3.0; // seconds at peak before dropping
+    config.Slot0.kS = HANDOFF_KS;
+    config.Slot0.kP = HANDOFF_KP;
     handoffMotor.getConfigurator().apply(config);
   }
 
@@ -82,10 +88,17 @@ public class HandoffSubsystem extends SubsystemBase {
     //            + " unjamming="
     //            + unjamming);
     if (forceReverse) {
-      handoffMotor.setControl(voltageRequest.withOutput(REVERSE_VOLTAGE));
+      handoffMotor.setControl(velocityRequest.withVelocity(REVERSE_RPS));
       resetJamState();
       return;
     }
+
+    // Stage ball: while intaking and beam break not yet tripped, slowly run handoff
+    // to pull ball forward and stage it, freeing space in the intake for another ball
+    IntakeSubsystem.IntakeState intakeState = IntakeSubsystem.getInstance().getState();
+    boolean intaking =
+        intakeState == IntakeSubsystem.IntakeState.INTAKING
+            || intakeState == IntakeSubsystem.IntakeState.DEPLOYING;
 
     ShooterSubsystem shooter = ShooterSubsystem.getInstance();
     ShooterState shooterState = shooter.getState();
@@ -118,23 +131,26 @@ public class HandoffSubsystem extends SubsystemBase {
       IndexerSubsystem.getInstance().feed();
     }
 
+    Logger.recordOutput("Handoff/ShouldFeed", shouldFeed);
+    Logger.recordOutput("Handoff/Intaking", intaking);
+    Logger.recordOutput("Handoff/IntakeState", intakeState.name());
+
     if (!shouldFeed) {
-      handoffMotor.setControl(voltageRequest.withOutput(0.0));
-      IndexerSubsystem.getInstance().stop();
+      if (intaking && !currentBeamBroken) {
+        // Stage: slowly pull ball to beam break so intake can hold another
+        handoffMotor.setControl(velocityRequest.withVelocity(STAGE_RPS));
+        IndexerSubsystem.getInstance().feed();
+      } else {
+        handoffMotor.setControl(neutralRequest);
+        IndexerSubsystem.getInstance().stop();
+      }
       resetJamState();
-      feedStartTime = -1.0;
       feedLatchStartTime = -1.0;
       return;
     }
 
-    if (feedStartTime < 0) {
-      feedStartTime = Timer.getFPGATimestamp();
-    }
-
-    //    double now = Timer.getFPGATimestamp();
-
     if (unjamming) {
-      handoffMotor.setControl(voltageRequest.withOutput(REVERSE_VOLTAGE));
+      handoffMotor.setControl(velocityRequest.withVelocity(REVERSE_RPS));
       IndexerSubsystem.getInstance().reverse();
       if (now - unjamStartTime >= UNJAM_TIME_SECONDS) {
         unjamming = false;
@@ -157,9 +173,7 @@ public class HandoffSubsystem extends SubsystemBase {
       blockedStartTime = -1.0;
     }
 
-    double feedVoltage =
-        (now - feedStartTime < PEAK_DURATION) ? FEED_VOLTAGE_PEAK : FEED_VOLTAGE_STEADY;
-    handoffMotor.setControl(voltageRequest.withOutput(feedVoltage));
+    handoffMotor.setControl(velocityRequest.withVelocity(FEED_RPS));
   }
 
   private void resetJamState() {

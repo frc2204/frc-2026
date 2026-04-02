@@ -6,6 +6,7 @@ import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -30,22 +31,26 @@ public class IntakeSubsystem extends SubsystemBase {
 
   private IntakeState state = IntakeState.STOWED;
 
-  private static final int DEPLOY_RIGHT_MOTOR_ID = 31;
-  private static final int DEPLOY_LEFT_MOTOR_ID = 32;
-  private static final int ROLLER_MOTOR_ID = 30;
-  private static final double GEAR_RATIO = 1;
+  private static final int ROLLER_MOTOR_ID = 31;
+  private static final int DEPLOY_MOTOR_ID = 32;
 
-  private static final double STOW_POSITION = 0.5;
-  private static final double DEPLOY_POSITION = -18.40; // ~90 degrees in mechanism rotations 23,40
+  private static final double GEAR_RATIO = 15.0; // 1:15 motor:mechanism
+
+  private static final double STOW_POSITION = 0.023;
+  private static final double DEPLOY_POSITION = 0.228516; // ~90 degrees in mechanism rotations
 
   // Slot 0 — deploy (down)
-  private static final double DEPLOY_KS = 0.37; // tune
-  private static final double DEPLOY_P = 1; // tune
-  private static final double DEPLOY_D = 0.0; // tune
+  private static final double DEPLOY_KS = 0.25; // tune
+  private static final double DEPLOY_KP = 15.5; // tune
+  private static final double DEPLOY_KD = 0.1; // tune — dampens slam
+  private static final double DEPLOY_KG =
+      0.5; // tune — gravity compensation (volts to hold horizontal)
+
   // Slot 1 — stow (up)
   private static final double STOW_KS = 0.37; // tune
-  private static final double STOW_P = 1.5; // tune
-  private static final double STOW_D = 0.0; // tune
+  private static final double STOW_KP = 18.5; // tune
+  private static final double STOW_KD = 0.0; // tune
+  private static final double STOW_KG = 0.3; // tune — gravity compensation
 
   private static final double INTAKE_RPS = 2500.0 / 60.0; // tune
   private static final double EJECT_RPS = -2500.0 / 60.0; // tune
@@ -55,161 +60,103 @@ public class IntakeSubsystem extends SubsystemBase {
   private static final double ROLLER_KP = 3.0; // amps per RPS error, tune
   private static final double ROLLER_KD = 0.0; // tune
 
-  private final TalonFX deployRightMotor = new TalonFX(DEPLOY_RIGHT_MOTOR_ID);
-  private final TalonFX deployLeftMotor = new TalonFX(DEPLOY_LEFT_MOTOR_ID);
+  private final TalonFX deployMotor = new TalonFX(DEPLOY_MOTOR_ID);
   private final MotionMagicVoltage motionMagicRequest =
       new MotionMagicVoltage(0).withEnableFOC(true);
 
   private final TalonFX rollerMotor = new TalonFX(ROLLER_MOTOR_ID);
   private final VelocityTorqueCurrentFOC rollerVelocityRequest = new VelocityTorqueCurrentFOC(0);
-  private final MotionMagicVoltage motionMagicRequestLeft =
-      new MotionMagicVoltage(0).withEnableFOC(true);
   private final NeutralOut neutralRequest = new NeutralOut();
   private final VoltageOut voltageRequest = new VoltageOut(0).withEnableFOC(true);
   private double manualVoltage = 0.0;
 
-  private static final double MAX_POSITION_DIVERGENCE = 3.0; // rotations, tune
-  private boolean deployStalled = false;
-
   private IntakeSubsystem() {
+    // Deploy motor config
     var config = new TalonFXConfiguration();
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
 
     config.CurrentLimits.SupplyCurrentLimitEnable = true;
-    config.CurrentLimits.SupplyCurrentLimit = 30.0;
-    config.CurrentLimits.SupplyCurrentLowerLimit = 20.0;
+    config.CurrentLimits.SupplyCurrentLimit = 60.0;
+    config.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
     config.CurrentLimits.SupplyCurrentLowerTime = 1.0;
-    //    config.CurrentLimits.StatorCurrentLimit = 40.0; // low to protect 3D print
-    //    config.CurrentLimits.StatorCurrentLimitEnable = true;
 
     config.Slot0.kS = DEPLOY_KS;
-    config.Slot0.kP = DEPLOY_P;
-    config.Slot0.kD = DEPLOY_D;
+    config.Slot0.kP = DEPLOY_KP;
+    config.Slot0.kD = DEPLOY_KD;
+    config.Slot0.kG = DEPLOY_KG;
+    config.Slot0.GravityType = GravityTypeValue.Arm_Cosine;
 
     config.Slot1.kS = STOW_KS;
-    config.Slot1.kP = STOW_P;
-    config.Slot1.kD = STOW_D;
+    config.Slot1.kP = STOW_KP;
+    config.Slot1.kD = STOW_KD;
+    config.Slot1.kG = STOW_KG;
+    config.Slot1.GravityType = GravityTypeValue.Arm_Cosine;
 
-    //    config.Feedback.SensorToMechanismRatio = GEAR_RATIO;
+    config.Feedback.SensorToMechanismRatio = GEAR_RATIO;
 
-    config.MotionMagic.MotionMagicCruiseVelocity = 40; // mechanism rps (~180 deg/s)
-    config.MotionMagic.MotionMagicAcceleration = 40; // mechanism rps^2
+    config.MotionMagic.MotionMagicCruiseVelocity = 0.5; // mechanism rps — slow deploy over ~0.5s
+    config.MotionMagic.MotionMagicAcceleration = 2; // mechanism rps^2
 
-    //    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
-    //    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
+    config.SoftwareLimitSwitch.ForwardSoftLimitEnable = false;
+    config.SoftwareLimitSwitch.ForwardSoftLimitThreshold = 0.0;
+    config.SoftwareLimitSwitch.ReverseSoftLimitEnable = false;
+    config.SoftwareLimitSwitch.ReverseSoftLimitThreshold = DEPLOY_POSITION;
 
-    deployRightMotor.getConfigurator().apply(config);
+    deployMotor.getConfigurator().apply(config);
+    deployMotor.setPosition(0.0); // assume starting stowed
 
-    // Second deploy motor — independent, opposed direction
-    var deployConfig2 = new TalonFXConfiguration();
-    deployConfig2.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-    deployConfig2.MotorOutput.Inverted = InvertedValue.Clockwise_Positive; // opposed
-    deployConfig2.CurrentLimits.SupplyCurrentLimitEnable = true;
-    deployConfig2.CurrentLimits.SupplyCurrentLimit = 30.0;
-    deployConfig2.CurrentLimits.SupplyCurrentLowerLimit = 20.0;
-    deployConfig2.CurrentLimits.SupplyCurrentLowerTime = 1.0;
-    deployConfig2.Slot0.kS = DEPLOY_KS;
-    deployConfig2.Slot0.kP = DEPLOY_P;
-    deployConfig2.Slot0.kD = DEPLOY_D;
-    deployConfig2.Slot1.kS = STOW_KS;
-    deployConfig2.Slot1.kP = STOW_P;
-    deployConfig2.Slot1.kD = STOW_D;
-    deployConfig2.MotionMagic.MotionMagicCruiseVelocity = 40;
-    deployConfig2.MotionMagic.MotionMagicAcceleration = 40;
-    deployConfig2.SoftwareLimitSwitch.ForwardSoftLimitEnable = false;
-    deployConfig2.SoftwareLimitSwitch.ReverseSoftLimitEnable = false;
-    deployLeftMotor.getConfigurator().apply(deployConfig2);
-    deployLeftMotor.setPosition(0.0);
-
-    // Roller motor — Kraken X44
+    // Roller motor config
     var rollerConfig = new TalonFXConfiguration();
     rollerConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-    rollerConfig.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
-    //    rollerConfig.CurrentLimits.StatorCurrentLimitEnable = true;
-    //    rollerConfig.CurrentLimits.StatorCurrentLimit = 40; // reduced for Kraken X44
+    rollerConfig.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
     rollerConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
-    rollerConfig.CurrentLimits.SupplyCurrentLimit = 60; // reduced for Kraken X44
+    rollerConfig.CurrentLimits.SupplyCurrentLimit = 60;
     rollerConfig.CurrentLimits.SupplyCurrentLowerLimit = 30.0;
     rollerConfig.CurrentLimits.SupplyCurrentLowerTime = 1.0;
     rollerConfig.Slot0.kS = ROLLER_KS;
     rollerConfig.Slot0.kP = ROLLER_KP;
     rollerConfig.Slot0.kD = ROLLER_KD;
     rollerMotor.getConfigurator().apply(rollerConfig);
-
-    deployRightMotor.setPosition(0.0); // assume starting stowed
   }
 
   @Override
   public void periodic() {
-    // Check if deploy motors have diverged (one side stuck)
-    double rightPos = deployRightMotor.getPosition().getValueAsDouble();
-    double leftPos = deployLeftMotor.getPosition().getValueAsDouble();
-    double divergence = Math.abs(rightPos - leftPos);
-    if (divergence > MAX_POSITION_DIVERGENCE && state != IntakeState.MANUAL) {
-      deployStalled = true;
-    }
-    // Clear stall if positions converge again (e.g. after manual intervention)
-    if (divergence < MAX_POSITION_DIVERGENCE * 0.5) {
-      deployStalled = false;
-    }
-
-    if (deployStalled) {
-      deployRightMotor.setControl(neutralRequest);
-      deployLeftMotor.setControl(neutralRequest);
-      rollerMotor.setControl(neutralRequest);
-      Logger.recordOutput("Intake/DeployStalled", true);
-      Logger.recordOutput("Intake/Divergence", divergence);
-      Logger.recordOutput("Intake/RightPos", rightPos);
-      Logger.recordOutput("Intake/LeftPos", leftPos);
-      return;
-    }
+    double deployPos = deployMotor.getPosition().getValueAsDouble();
 
     switch (state) {
       case STOWED:
-        deployRightMotor.setControl(motionMagicRequest.withPosition(STOW_POSITION).withSlot(1));
-        deployLeftMotor.setControl(motionMagicRequestLeft.withPosition(STOW_POSITION).withSlot(1));
+        deployMotor.setControl(motionMagicRequest.withPosition(STOW_POSITION).withSlot(1));
         rollerMotor.setControl(neutralRequest);
         break;
       case DEPLOYING:
-        deployRightMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
-        deployLeftMotor.setControl(
-            motionMagicRequestLeft.withPosition(DEPLOY_POSITION).withSlot(0));
+        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setControl(neutralRequest);
         break;
       case INTAKING:
-        deployRightMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
-        deployLeftMotor.setControl(
-            motionMagicRequestLeft.withPosition(DEPLOY_POSITION).withSlot(0));
+        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setControl(rollerVelocityRequest.withVelocity(INTAKE_RPS));
         break;
       case EJECTING:
-        deployRightMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
-        deployLeftMotor.setControl(
-            motionMagicRequestLeft.withPosition(DEPLOY_POSITION).withSlot(0));
+        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setControl(rollerVelocityRequest.withVelocity(EJECT_RPS));
         break;
       case IDLE_DEPLOYED:
-        deployRightMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
-        deployLeftMotor.setControl(
-            motionMagicRequestLeft.withPosition(DEPLOY_POSITION).withSlot(0));
+        deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setControl(neutralRequest);
         break;
       case MANUAL:
-        deployRightMotor.setControl(voltageRequest.withOutput(manualVoltage));
-        deployLeftMotor.setControl(voltageRequest.withOutput(manualVoltage));
+        deployMotor.setControl(voltageRequest.withOutput(manualVoltage));
         rollerMotor.setControl(rollerVelocityRequest.withVelocity(INTAKE_RPS));
         break;
     }
 
-    Logger.recordOutput("Intake/DeployStalled", false);
-    Logger.recordOutput("Intake/Divergence", divergence);
-    Logger.recordOutput("Intake/RightPos", rightPos);
-    Logger.recordOutput("Intake/LeftPos", leftPos);
+    Logger.recordOutput("Intake/DeployPosition", deployPos);
+    Logger.recordOutput("Intake/State", state.name());
     Logger.recordOutput(
-        "Intake/Deploy2SupplyCurrent", deployLeftMotor.getSupplyCurrent().getValueAsDouble());
+        "Intake/DeploySupplyCurrent", deployMotor.getSupplyCurrent().getValueAsDouble());
     Logger.recordOutput(
-        "Intake/Deploy2StatorCurrent", deployLeftMotor.getStatorCurrent().getValueAsDouble());
+        "Intake/DeployStatorCurrent", deployMotor.getStatorCurrent().getValueAsDouble());
   }
 
   public void setState(IntakeState newState) {
@@ -221,7 +168,7 @@ public class IntakeSubsystem extends SubsystemBase {
   }
 
   public double getDeployPosition() {
-    return deployRightMotor.getPosition().getValueAsDouble();
+    return deployMotor.getPosition().getValueAsDouble();
   }
 
   public void stow() {

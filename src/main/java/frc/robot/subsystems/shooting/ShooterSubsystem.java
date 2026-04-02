@@ -105,10 +105,10 @@ public class ShooterSubsystem extends SubsystemBase {
 
   private static final double[] DISTANCE_KEYS = {
     1.320, 1.573, 1.723, 2.002, 2.250, 2.514, 2.750, 3.000, 3.250, 3.500, 3.730, 4.000, 4.250,
-    4.500, 4.750, 5.000
+    4.500, 4.750, 5.000, 5.250, 5.500, 5.750, 6.000, 6.250
   };
 
-  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(40); // rps
+  private final SlewRateLimiter spinUpRamp = new SlewRateLimiter(80); // rps
 
   private final VelocityTorqueCurrentFOC velocityRequest = new VelocityTorqueCurrentFOC(0);
   private final VoltageOut voltageRequest = new VoltageOut(0).withEnableFOC(true);
@@ -134,6 +134,11 @@ public class ShooterSubsystem extends SubsystemBase {
     shotFlywheelSpeedMap.put(4.500, 3250.0);
     shotFlywheelSpeedMap.put(4.750, 3350.0);
     shotFlywheelSpeedMap.put(5.000, 3415.0);
+    shotFlywheelSpeedMap.put(5.250, 3465.0);
+    shotFlywheelSpeedMap.put(5.500, 3515.0);
+    shotFlywheelSpeedMap.put(5.750, 3565.0);
+    shotFlywheelSpeedMap.put(6.000, 3850.0);
+    shotFlywheelSpeedMap.put(6.250, 4135.0);
     INSTANCE = new ShooterSubsystem();
   }
 

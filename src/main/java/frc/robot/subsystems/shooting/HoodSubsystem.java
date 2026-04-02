@@ -49,7 +49,7 @@ public class HoodSubsystem extends SubsystemBase {
 
   private static final double[] DISTANCE_KEYS = {
     1.320, 1.573, 1.723, 2.002, 2.250, 2.514, 2.750, 3.000, 3.250, 3.500, 3.730, 4.000, 4.250,
-    4.500, 4.750, 5.000
+    4.500, 4.750, 5.000, 5.250, 5.500, 5.750, 6.000, 6.250
   };
 
   static {
@@ -70,6 +70,11 @@ public class HoodSubsystem extends SubsystemBase {
     hoodAngleMap.put(4.500, 220.0 / 360.0);
     hoodAngleMap.put(4.750, 230.0 / 360.0);
     hoodAngleMap.put(5.000, 240.0 / 360.0);
+    hoodAngleMap.put(5.250, 260.0 / 360.0);
+    hoodAngleMap.put(5.500, 280.0 / 360.0);
+    hoodAngleMap.put(5.750, 300.0 / 360.0);
+    hoodAngleMap.put(6.000, 300.0 / 360.0);
+    hoodAngleMap.put(6.250, 300.0 / 360.0);
     INSTANCE = new HoodSubsystem();
   }
 
@@ -131,6 +136,9 @@ public class HoodSubsystem extends SubsystemBase {
                   - 0.05)); // give it a little buffer so it doesn't hit the soft stop
     } else {
       hoodMotor.setControl(positionRequest.withPosition(targetPositionRotations));
+      //      hoodMotor.setControl(
+      //          positionRequest.withPosition(SmartDashboard.getNumber("Target Angle", 0.0) /
+      // 360.0));
     }
 
     Logger.recordOutput("Hood/RobotPoseX", robotPoseX);
