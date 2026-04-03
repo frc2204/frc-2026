@@ -48,8 +48,8 @@ public class TurretSubsystem extends SubsystemBase {
   private final MotionMagicVoltage motionMagicRequest =
       new MotionMagicVoltage(0).withEnableFOC(true);
 
-  private static final double MAX_ANGLE = 75;
-  private static final double MIN_ANGLE = -75;
+  private static final double MAX_ANGLE = 80;
+  private static final double MIN_ANGLE = -100;
   private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 38279.9988;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 15000;

@@ -122,10 +122,10 @@ public class HoodSubsystem extends SubsystemBase {
     double allianceX = AllianceFlipUtil.applyX(robotPoseX);
     trenchMode = false;
 
-    if (allianceX > 2 && allianceX < 7) {
+    if (allianceX > 3.5 && allianceX < 7) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
       trenchMode = true;
-    } else if (allianceX < FieldConstants.FIELDLENGTH - 2.5
+    } else if (allianceX < FieldConstants.FIELDLENGTH - 3.5
         && allianceX > FieldConstants.FIELDLENGTH - 6.5) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
       trenchMode = true;

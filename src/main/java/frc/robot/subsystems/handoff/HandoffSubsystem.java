@@ -105,7 +105,7 @@ public class HandoffSubsystem extends SubsystemBase {
 
     boolean shouldFeed = false;
     if (shooterState == ShooterState.PASSING) {
-      shouldFeed = true; // full voltage, feed
+      shouldFeed = shooter.isAtGoalSpeed();
     }
     //    shooterState == ShooterState.PASSING ||
     //    if (shooterState == ShooterState.OVERRIDE) {
