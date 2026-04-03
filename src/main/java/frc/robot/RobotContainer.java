@@ -158,7 +158,9 @@ public class RobotContainer {
     // Set up object detection
     objectDetection = new ObjectDetection(drive::getPose);
 
-    leds = new frc.robot.subsystems.leds.CANdleSubsystem(turret);
+    leds =
+        new frc.robot.subsystems.leds.CANdleSubsystem(
+            turret, () -> shootingToggled, () -> slowMode);
     driverView =
         new frc.robot.util.DriverViewSelector(drive::getPose, turret::getAbsolutePositionDeg);
 
@@ -258,7 +260,7 @@ public class RobotContainer {
   private void configureButtonBindings() {
     // Default command, field-relative drive with speed modes
     // PS button toggles intake drive mode (heading follows stick direction)
-    double slowFactor = 0.65; // tune
+    double slowFactor = 1; // tune 0.65
     var xSup =
         (DoubleSupplier) () -> -driverController.getLeftY() * getDriveSpeedFactor(slowFactor);
     var ySup =
@@ -267,18 +269,19 @@ public class RobotContainer {
         (DoubleSupplier)
             () -> -driverController.getRightX() * getDriveSpeedFactor(slowFactor) * 0.75;
 
-    driverController
-        .povUp()
-        .onTrue(
-            Commands.sequence(
-                Commands.runOnce(
-                    () -> {
-                      intakeDriveEnabled = !intakeDriveEnabled;
-                      if (intakeDriveEnabled) {
-                        intakeHeading = drive.getRotation();
-                      }
-                    }),
-                Commands.runOnce(() -> {}, drive)));
+    // intake drive
+    //    driverController
+    //        .povUp()
+    //        .onTrue(
+    //            Commands.sequence(
+    //                Commands.runOnce(
+    //                    () -> {
+    //                      intakeDriveEnabled = !intakeDriveEnabled;
+    //                      if (intakeDriveEnabled) {
+    //                        intakeHeading = drive.getRotation();
+    //                      }
+    //                    }),
+    //                Commands.runOnce(() -> {}, drive)));
 
     drive.setDefaultCommand(
         Commands.either(
@@ -309,24 +312,25 @@ public class RobotContainer {
     // TODO:  make triangle spin up and down
 
     // R3: snap drivetrain heading to nearest 0° or 180° (intake faces forward/backward)
-    driverController
-        .povDown()
-        .whileTrue(
-            DriveCommands.joystickDriveAtAngle(
-                drive,
-                () -> -driverController.getLeftY() * getDriveSpeedFactor(slowFactor),
-                () -> -driverController.getLeftX() * getDriveSpeedFactor(slowFactor),
-                () -> {
-                  double heading = drive.getRotation().getRadians();
-                  // Normalize to [-PI, PI] then snap to 0 or PI
-                  heading = Math.IEEEremainder(heading, 2.0 * Math.PI);
-                  if (heading > Math.PI / 2.0) return Rotation2d.kPi;
-                  if (heading < -Math.PI / 2.0) return Rotation2d.kPi;
-                  return Rotation2d.kZero;
-                }));
+    //    driverController
+    //        .povDown()
+    //        .whileTrue(
+    //            DriveCommands.joystickDriveAtAngle(
+    //                drive,
+    //                () -> -driverController.getLeftY() * getDriveSpeedFactor(slowFactor),
+    //                () -> -driverController.getLeftX() * getDriveSpeedFactor(slowFactor),
+    //                () -> {
+    //                  double heading = drive.getRotation().getRadians();
+    //                  // Normalize to [-PI, PI] then snap to 0 or PI
+    //                  heading = Math.IEEEremainder(heading, 2.0 * Math.PI);
+    //                  if (heading > Math.PI / 2.0) return Rotation2d.kPi;
+    //                  if (heading < -Math.PI / 2.0) return Rotation2d.kPi;
+    //                  return Rotation2d.kZero;
+    //                }));
 
-    // A: toggle slow mode
-    driverController.start().onTrue(Commands.runOnce(() -> slowMode = !slowMode));
+    // Start: hold for slow mode
+    driverController.start().onTrue(Commands.runOnce(() -> slowMode = true));
+    driverController.start().onFalse(Commands.runOnce(() -> slowMode = false));
 
     // L3: reset gyro to 0°
     driverController
@@ -404,32 +408,32 @@ public class RobotContainer {
                 intake));
 
     // RB: override — reverse handoff, indexer, intake while held
-    driverController
-        .rightBumper()
-        .whileTrue(
-            Commands.runOnce(
-                () -> {
-                  handoff.setReverse(true);
-                  indexer.reverse();
-                  intake.eject();
-                },
-                handoff,
-                indexer,
-                intake))
-        .onFalse(
-            Commands.runOnce(
-                () -> {
-                  handoff.setReverse(false);
-                  indexer.stop();
-                  if (intakeDeployed) {
-                    intake.intake();
-                  } else {
-                    intake.stow();
-                  }
-                },
-                handoff,
-                indexer,
-                intake));
+    //    driverController
+    //        .rightBumper()
+    //        .whileTrue(
+    //            Commands.runOnce(
+    //                () -> {
+    //                  handoff.setReverse(true);
+    //                  indexer.reverse();
+    //                  intake.eject();
+    //                },
+    //                handoff,
+    //                indexer,
+    //                intake))
+    //        .onFalse(
+    //            Commands.runOnce(
+    //                () -> {
+    //                  handoff.setReverse(false);
+    //                  indexer.stop();
+    //                  if (intakeDeployed) {
+    //                    intake.intake();
+    //                  } else {
+    //                    intake.stow();
+    //                  }
+    //                },
+    //                handoff,
+    //                indexer,
+    //                intake));
 
     // Shift change rumble alerts — 0.5s pulse at 10s and 5s remaining
     Trigger tenSecWarning =
@@ -637,10 +641,12 @@ public class RobotContainer {
         // Red alliance: place robot in red zone facing blue wall
         startingPose =
             new Pose2d(
-                FieldConstants.FIELDLENGTH - 1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kPi);
+                FieldConstants.FIELDLENGTH - 1.0,
+                FieldConstants.FIELDWIDTH / 2.0,
+                Rotation2d.kZero);
       } else {
         // Blue alliance: place robot in blue zone facing red wall
-        startingPose = new Pose2d(1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kZero);
+        startingPose = new Pose2d(1.0, FieldConstants.FIELDWIDTH / 2.0, Rotation2d.kPi);
       }
       drive.setPose(startingPose);
     }
@@ -662,7 +668,7 @@ public class RobotContainer {
 
   private double getShootingSpeedFactor() {
     if (!shootingToggled) return 1.0;
-    return 0.65; // static slow factor while shooting — tune
+    return 1; // static slow factor while shooting — tune 0.65
 
     // ── dynamic distance-based speed (commented out) ──────────────────────
     // Pose2d pose = drive.getPose();
