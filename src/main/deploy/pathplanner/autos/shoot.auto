@@ -26,13 +26,13 @@
         {
           "type": "wait",
           "data": {
-            "waitTime": 1.0
+            "waitTime": 3.0
           }
         },
         {
           "type": "named",
           "data": {
-            "name": "overrideShooter"
+            "name": "autoShoot"
           }
         },
         {
@@ -44,7 +44,19 @@
         {
           "type": "named",
           "data": {
-            "name": "rapidFireShooter"
+            "name": "overrideShooter"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 5.0
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "spinUpShooter"
           }
         }
       ]

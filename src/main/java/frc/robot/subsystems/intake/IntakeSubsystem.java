@@ -179,6 +179,10 @@ public class IntakeSubsystem extends SubsystemBase {
     setState(IntakeState.INTAKING);
   }
 
+  public void idleDeploy() {
+    setState(IntakeState.IDLE_DEPLOYED);
+  }
+
   public void eject() {
     setState(IntakeState.EJECTING);
   }

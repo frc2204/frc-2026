@@ -1,13 +1,13 @@
 package frc.robot.subsystems.leds;
 
 import com.ctre.phoenix6.configs.CANdleConfiguration;
+import com.ctre.phoenix6.controls.SingleFadeAnimation;
 import com.ctre.phoenix6.controls.SolidColor;
 import com.ctre.phoenix6.hardware.CANdle;
 import com.ctre.phoenix6.signals.RGBWColor;
 import com.ctre.phoenix6.signals.StripTypeValue;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotController;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.intake.IntakeSubsystem;
 import frc.robot.subsystems.shooting.HoodSubsystem;
@@ -28,13 +28,11 @@ public class CANdleSubsystem extends SubsystemBase {
   private static final int LEFT_START = RIGHT_END + 1;
   private static final int LEFT_END = LED_START + 44; // 19 LEDs (26-44)
 
-  private static final double BREATHE_PERIOD = 1.5; // seconds per full breathe cycle
-
   private static final RGBWColor OFF = new RGBWColor(0, 0, 0);
   private static final RGBWColor GREEN = new RGBWColor(0, 255, 0);
   private static final RGBWColor YELLOW = new RGBWColor(255, 180, 0);
   private static final RGBWColor RED = new RGBWColor(255, 0, 0);
-  private static final RGBWColor BLUE = new RGBWColor(0, 0, 255);
+  private static final RGBWColor PINK = new RGBWColor(255, 105, 180);
   private static final RGBWColor ORANGE = new RGBWColor(255, 80, 0);
   private static final RGBWColor PURPLE = new RGBWColor(128, 0, 255);
   private static final RGBWColor WHITE = new RGBWColor(255, 255, 255);
@@ -42,6 +40,7 @@ public class CANdleSubsystem extends SubsystemBase {
 
   private final CANdle candle;
   private final SolidColor solidAll = new SolidColor(RIGHT_START, LEFT_END);
+  private final SingleFadeAnimation fadeAll = new SingleFadeAnimation(RIGHT_START, LEFT_END);
 
   private final TurretSubsystem turret;
   private final BooleanSupplier shootingToggledSupplier;
@@ -85,17 +84,14 @@ public class CANdleSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     LEDState desired = determineState();
-    boolean breathing = desired == LEDState.READY_TO_FIRE || desired == LEDState.FIRING;
 
-    boolean disabled = desired == LEDState.DISABLED_OK || desired == LEDState.DISABLED_ERROR;
-
-    // Always update for breathing and disabled states. Solid enabled states only on change.
-    if (!breathing && !disabled && desired == lastState) return;
+    if (desired == lastState) return;
     lastState = desired;
 
     switch (desired) {
       case DISABLED_OK:
-        candle.setControl(solidAll.withColor(GREEN));
+        // Breathing green — runs on CANdle hardware, smooth animation
+        candle.setControl(fadeAll.withColor(GREEN).withFrameRate(80));
         break;
       case DISABLED_ERROR:
         candle.setControl(solidAll.withColor(RED));
@@ -104,11 +100,11 @@ public class CANdleSubsystem extends SubsystemBase {
       case IDLE:
         candle.setControl(solidAll.withColor(OFF));
         break;
-      case SHOOTING_TOGGLED:
-        candle.setControl(solidAll.withColor(ORANGE));
-        break;
       case SLOW_MODE:
         candle.setControl(solidAll.withColor(CYAN));
+        break;
+      case SHOOTING_TOGGLED:
+        candle.setControl(solidAll.withColor(ORANGE));
         break;
       case SPINNING_UP:
         candle.setControl(solidAll.withColor(YELLOW));
@@ -117,16 +113,16 @@ public class CANdleSubsystem extends SubsystemBase {
         candle.setControl(solidAll.withColor(GREEN));
         break;
       case READY_TO_FIRE:
-        candle.setControl(solidAll.withColor(breathe(0, 255, 0)));
+        candle.setControl(fadeAll.withColor(GREEN).withFrameRate(80));
         break;
       case FIRING:
-        candle.setControl(solidAll.withColor(breathe(255, 255, 255)));
+        candle.setControl(fadeAll.withColor(WHITE).withFrameRate(80));
         break;
       case PASSING:
         candle.setControl(solidAll.withColor(ORANGE));
         break;
       case INTAKING:
-        candle.setControl(solidAll.withColor(BLUE));
+        candle.setControl(solidAll.withColor(PINK));
         break;
       case EJECTING:
         candle.setControl(solidAll.withColor(PURPLE));
@@ -134,20 +130,21 @@ public class CANdleSubsystem extends SubsystemBase {
     }
   }
 
-  /** Returns a scaled version of the color using a sine wave for breathing effect. */
-  private RGBWColor breathe(int r, int g, int b) {
-    double t = Timer.getFPGATimestamp();
-    double brightness = (Math.sin(2.0 * Math.PI * t / BREATHE_PERIOD) + 1.0) / 2.0;
-    // Clamp minimum so it doesn't fully turn off
-    brightness = 0.15 + brightness * 0.85;
-    return new RGBWColor((int) (r * brightness), (int) (g * brightness), (int) (b * brightness));
-  }
-
   private LEDState determineState() {
     // ── DISABLED: diagnostic status ──
     if (DriverStation.isDisabled()) {
       boolean healthy = checkDisabledHealth();
       return healthy ? LEDState.DISABLED_OK : LEDState.DISABLED_ERROR;
+    }
+
+    // Slow mode — highest enabled priority
+    if (slowModeSupplier.getAsBoolean()) {
+      return LEDState.SLOW_MODE;
+    }
+
+    // shooting toggled second priority
+    if (shootingToggledSupplier.getAsBoolean()) {
+      return LEDState.SHOOTING_TOGGLED;
     }
 
     // ── ENABLED: game state ──
@@ -189,14 +186,6 @@ public class CANdleSubsystem extends SubsystemBase {
     }
     if (intakeState == IntakeSubsystem.IntakeState.EJECTING) {
       return LEDState.EJECTING;
-    }
-
-    // Driver mode indicators
-    if (shootingToggledSupplier.getAsBoolean()) {
-      return LEDState.SHOOTING_TOGGLED;
-    }
-    if (slowModeSupplier.getAsBoolean()) {
-      return LEDState.SLOW_MODE;
     }
 
     return LEDState.IDLE;

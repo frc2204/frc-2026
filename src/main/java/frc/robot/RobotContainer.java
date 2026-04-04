@@ -260,14 +260,14 @@ public class RobotContainer {
   private void configureButtonBindings() {
     // Default command, field-relative drive with speed modes
     // PS button toggles intake drive mode (heading follows stick direction)
-    double slowFactor = 1; // tune 0.65
+    double slowFactor = 0.65; // tune 0.65
     var xSup =
         (DoubleSupplier) () -> -driverController.getLeftY() * getDriveSpeedFactor(slowFactor);
     var ySup =
         (DoubleSupplier) () -> -driverController.getLeftX() * getDriveSpeedFactor(slowFactor);
     var omegaSup =
         (DoubleSupplier)
-            () -> -driverController.getRightX() * getDriveSpeedFactor(slowFactor) * 0.75;
+            () -> -driverController.getRightX() * getDriveSpeedFactor(slowFactor) * 0.70;
 
     // intake drive
     //    driverController
@@ -329,8 +329,8 @@ public class RobotContainer {
     //                }));
 
     // Start: hold for slow mode
-    driverController.start().onTrue(Commands.runOnce(() -> slowMode = true));
-    driverController.start().onFalse(Commands.runOnce(() -> slowMode = false));
+    driverController.start().onTrue(Commands.runOnce(() -> slowMode = !slowMode));
+    //    driverController.start().onFalse(Commands.runOnce(() -> slowMode = false));
 
     // L3: reset gyro to 0°
     driverController
@@ -399,6 +399,25 @@ public class RobotContainer {
                   if (now - lastIntakeToggleTime < 0.3) return; // debounce
                   lastIntakeToggleTime = now;
                   intakeDeployed = !intakeDeployed;
+                  if (intakeDeployed) {
+                    intake.intake();
+                  } else {
+                    intake.stow();
+                  }
+                },
+                intake));
+
+    driverController
+        .rightBumper()
+        .whileTrue(
+            Commands.runOnce(
+                () -> {
+                  intake.idleDeploy();
+                },
+                intake))
+        .onFalse(
+            Commands.runOnce(
+                () -> {
                   if (intakeDeployed) {
                     intake.intake();
                   } else {
@@ -661,7 +680,7 @@ public class RobotContainer {
   }
 
   private double getDriveSpeedFactor(double slowFactor) {
-    if (overrideSpeed) return 1.0;
+    if (overrideSpeed) return 0.65; // 1.0 change when override again
     if (slowMode) return slowFactor;
     return getShootingSpeedFactor();
   }
