@@ -10,6 +10,8 @@ package frc.robot;
 import static frc.robot.subsystems.vision.VisionConstants.*;
 
 import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.path.PathConstraints;
+import com.pathplanner.lib.path.PathPlannerPath;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
@@ -51,6 +53,7 @@ import frc.robot.util.FieldConstants;
 import frc.robot.util.HubShiftUtil;
 import frc.robot.util.geometry.AllianceFlipUtil;
 import java.util.List;
+import java.util.Set;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
@@ -79,6 +82,11 @@ public class RobotContainer {
   // Controllers
   private final CommandXboxController driverController = new CommandXboxController(0);
   private final CommandPS5Controller operatorController = new CommandPS5Controller(1);
+
+  // Constraints used by the back-button auto-align (matches the ladder paths' max
+  // velocity/acceleration of 3.0).
+  private static final PathConstraints LADDER_PATH_CONSTRAINTS =
+      new PathConstraints(3.5, 4.0, 2 * Math.PI, 4 * Math.PI);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
@@ -306,8 +314,48 @@ public class RobotContainer {
             () -> intakeDriveEnabled));
 
     // Back: hold for override speed (full speed, ignores shooting slowdown)
-    driverController.back().onTrue(Commands.runOnce(() -> overrideSpeed = true));
-    driverController.back().onFalse(Commands.runOnce(() -> overrideSpeed = false));
+    // driverController.back().onTrue(Commands.runOnce(() -> overrideSpeed = true));
+    // driverController.back().onFalse(Commands.runOnce(() -> overrideSpeed = false));
+
+    // Back: auto-align behind a tower using AutoBuilder.
+    // - Y axis chooses Bottom-To-Top vs Top-To-Bottom (driver-relative).
+    // - X axis chooses our-side vs their-side ladder (driver-relative):
+    //     robot on our half -> original ladder paths (auto-flipped by AutoBuilder
+    //     to land behind our tower).
+    //     robot on their half -> "Far" ladder paths (auto-flipped to land behind
+    //     their tower).
+    // Hold to run, release to cancel.
+    driverController
+        .back()
+        .whileTrue(
+            Commands.defer(
+                () -> {
+                  Pose2d pose = drive.getPose();
+                  double y = pose.getY();
+                  double x = pose.getX();
+                  boolean flip = AllianceFlipUtil.shouldFlip();
+                  // Driver-relative side checks (paths are auto-flipped by AutoBuilder).
+                  boolean isBottomFromDriverView =
+                      flip
+                          ? y > FieldConstants.FIELDWIDTH / 2.0
+                          : y < FieldConstants.FIELDWIDTH / 2.0;
+                  boolean isOnOurSide =
+                      flip
+                          ? x > FieldConstants.FIELDLENGTH / 2.0
+                          : x < FieldConstants.FIELDLENGTH / 2.0;
+                  String baseName =
+                      isBottomFromDriverView ? "Bottom To Top Ladder" : "Top To Bottom Ladder";
+                  String pathName = isOnOurSide ? baseName : baseName + " Far";
+                  try {
+                    PathPlannerPath path = PathPlannerPath.fromPathFile(pathName);
+                    return AutoBuilder.pathfindThenFollowPath(path, LADDER_PATH_CONSTRAINTS);
+                  } catch (Exception e) {
+                    DriverStation.reportError(
+                        "Failed to load ladder path " + pathName + ": " + e.getMessage(), false);
+                    return Commands.none();
+                  }
+                },
+                Set.of(drive)));
 
     // TODO:  make triangle spin up and down
 
@@ -623,7 +671,7 @@ public class RobotContainer {
         "Match/Match Time", edu.wpi.first.wpilibj.DriverStation.getMatchTime());
 
     // Driver state
-    SmartDashboard.putBoolean("Driver/OverrideSpeed", overrideSpeed);
+    // SmartDashboard.putBoolean("Driver/OverrideSpeed", overrideSpeed);
     SmartDashboard.putBoolean("Driver/ShootingToggled", shootingToggled);
     SmartDashboard.putBoolean("Driver/SlowMode", slowMode);
     SmartDashboard.putBoolean(
@@ -680,7 +728,7 @@ public class RobotContainer {
   }
 
   private double getDriveSpeedFactor(double slowFactor) {
-    if (overrideSpeed) return 0.65; // 1.0 change when override again
+    // if (overrideSpeed) return 0.65; // 1.0 change when override again
     if (slowMode) return slowFactor;
     return getShootingSpeedFactor();
   }

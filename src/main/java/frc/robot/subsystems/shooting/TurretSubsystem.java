@@ -174,6 +174,7 @@ public class TurretSubsystem extends SubsystemBase {
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
     //    HoodSubsystem.getInstance().setRobotPosex(turretFieldPos.getX());
     HoodSubsystem.getInstance().setRobotPosex(robotPose.getX());
+    HoodSubsystem.getInstance().setRobotPoseY(robotPose.getY());
 
     updateTargetPose();
 

@@ -44,6 +44,16 @@ public interface ModuleIO {
   /** Run the drive motor at the specified velocity. */
   public default void setDriveVelocity(double velocityRadPerSec) {}
 
+  /**
+   * Run the drive motor at the specified velocity with a torque-current feedforward (amps). The
+   * feedforward comes from the swerve setpoint generator and represents the friction-limited
+   * torque needed to follow the commanded acceleration. Implementations that can't accept a
+   * torque feedforward (e.g. voltage-mode or TalonFXS) should fall back to plain velocity control.
+   */
+  public default void setDriveVelocity(double velocityRadPerSec, double torqueFeedforwardAmps) {
+    setDriveVelocity(velocityRadPerSec);
+  }
+
   /** Run the turn motor to the specified rotation. */
   public default void setTurnPosition(Rotation2d rotation) {}
 

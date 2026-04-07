@@ -40,6 +40,7 @@ public class HoodSubsystem extends SubsystemBase {
   private static final InterpolatingDoubleTreeMap hoodAngleMap = new InterpolatingDoubleTreeMap();
 
   private double robotPoseX = 0;
+  private double robotPoseY = 0;
   private double targetDistance = 0.0;
   private boolean trenchMode = false;
 
@@ -120,13 +121,17 @@ public class HoodSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     double allianceX = AllianceFlipUtil.applyX(robotPoseX);
+    boolean inTrenchY =
+        robotPoseY < FieldConstants.TRENCHWIDTH
+            || robotPoseY > FieldConstants.FIELDWIDTH - FieldConstants.TRENCHWIDTH;
     trenchMode = false;
 
-    if (allianceX > 3.5 && allianceX < 7) {
+    if (allianceX > 3.5 && allianceX < 7 && inTrenchY) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
       trenchMode = true;
     } else if (allianceX < FieldConstants.FIELDLENGTH - 3.5
-        && allianceX > FieldConstants.FIELDLENGTH - 6.5) {
+        && allianceX > FieldConstants.FIELDLENGTH - 6.5
+        && inTrenchY) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
       trenchMode = true;
     } else if (allianceX > 6.5) {
@@ -162,6 +167,10 @@ public class HoodSubsystem extends SubsystemBase {
 
   public void setRobotPosex(double xMeters) {
     robotPoseX = xMeters;
+  }
+
+  public void setRobotPoseY(double yMeters) {
+    robotPoseY = yMeters;
   }
 
   public void setPosition(double positionRotations) {

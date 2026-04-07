@@ -114,6 +114,7 @@ public class Robot extends LoggedRobot {
   public void autonomousInit() {
     LimelightHelpers.SetIMUMode("limelight-four", 4);
     LimelightHelpers.setLimelightNTDouble("limelight-four", "throttle_set", 0);
+    robotContainer.getDrive().resetSetpoint();
     ShooterSubsystem.getInstance().onEnable();
     autonomousCommand = robotContainer.getAutonomousCommand();
 

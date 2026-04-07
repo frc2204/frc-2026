@@ -46,6 +46,12 @@ public class CANdleSubsystem extends SubsystemBase {
   private final BooleanSupplier shootingToggledSupplier;
   private final BooleanSupplier slowModeSupplier;
 
+  // Cached once at construction — reused by checkDisabledHealth() so we don't
+  // allocate a new JNI handle every periodic loop.
+  private final com.ctre.phoenix6.CANBus rioBus = new com.ctre.phoenix6.CANBus("rio");
+  private double lastHealthCheckTimestamp = 0.0;
+  private boolean lastHealthResult = true;
+
   private LEDState lastState = null;
 
   private enum LEDState {
@@ -191,16 +197,29 @@ public class CANdleSubsystem extends SubsystemBase {
     return LEDState.IDLE;
   }
 
-  /** Checks system health while disabled. */
+  /** Checks system health while disabled. Throttled to 1 Hz to keep loop time bounded. */
   private boolean checkDisabledHealth() {
+    double now = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    if (now - lastHealthCheckTimestamp < 1.0) {
+      return lastHealthResult;
+    }
+    lastHealthCheckTimestamp = now;
+
     boolean joystick = DriverStation.isJoystickConnected(0);
     boolean battery = RobotController.getBatteryVoltage() >= 11.5;
     boolean candleOk = candle.isConnected();
 
-    com.ctre.phoenix6.CANBus canivore = frc.robot.generated.TunerConstants.kCANBus;
-    com.ctre.phoenix6.CANBus rio = new com.ctre.phoenix6.CANBus("rio");
-    boolean canivoreOk = canivore.getStatus().Status.isOK();
-    boolean rioOk = rio.getStatus().Status.isOK();
+    // Skip CAN-bus status reads in sim — neither bus actually exists and the
+    // JNI calls can block at 50 Hz, causing loop overruns + comms drops.
+    boolean canivoreOk;
+    boolean rioOk;
+    if (edu.wpi.first.wpilibj.RobotBase.isReal()) {
+      canivoreOk = frc.robot.generated.TunerConstants.kCANBus.getStatus().Status.isOK();
+      rioOk = rioBus.getStatus().Status.isOK();
+    } else {
+      canivoreOk = true;
+      rioOk = true;
+    }
 
     org.littletonrobotics.junction.Logger.recordOutput("LEDs/JoystickConnected", joystick);
     org.littletonrobotics.junction.Logger.recordOutput("LEDs/BatteryOK", battery);
@@ -208,6 +227,7 @@ public class CANdleSubsystem extends SubsystemBase {
     org.littletonrobotics.junction.Logger.recordOutput("LEDs/CANivoreOK", canivoreOk);
     org.littletonrobotics.junction.Logger.recordOutput("LEDs/RioBusOK", rioOk);
 
-    return joystick && battery && canivoreOk && rioOk;
+    lastHealthResult = joystick && battery && canivoreOk && rioOk;
+    return lastHealthResult;
   }
 }

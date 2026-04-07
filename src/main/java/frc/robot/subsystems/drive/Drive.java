@@ -238,22 +238,29 @@ public class Drive extends SubsystemBase {
   }
 
   /**
-   * Runs the drive at the desired velocity.
+   * Runs the drive at the desired velocity. Routes the desired chassis speeds through 254's
+   * SwerveSetpointGenerator (via PathPlannerLib) so module torque is capped at the friction limit
+   * and the wheels can't be commanded past slip.
    *
-   * @param speeds Speeds in meters/sec
+   * @param speeds Speeds in meters/sec, robot-relative.
    */
   public void runVelocity(ChassisSpeeds speeds) {
-    ChassisSpeeds discreteSpeeds = ChassisSpeeds.discretize(speeds, 0.02);
-    SwerveModuleState[] setpointStates = kinematics.toSwerveModuleStates(discreteSpeeds);
-    SwerveDriveKinematics.desaturateWheelSpeeds(setpointStates, getMaxLinearSpeedMetersPerSec());
+    // Run desired speeds through 254's kinematic constraint solver. Do NOT discretize the speeds
+    // before passing them in — generateSetpoint() does its own discretization.
+    previousSetpoint = setpointGenerator.generateSetpoint(previousSetpoint, speeds, 0.02);
+
+    SwerveModuleState[] setpointStates = previousSetpoint.moduleStates();
+    double[] torqueFeedforwardAmps = previousSetpoint.feedforwards().torqueCurrentsAmps();
 
     // Log setpoints
     Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
-    Logger.recordOutput("SwerveChassisSpeeds/Setpoints", speeds);
+    Logger.recordOutput("SwerveChassisSpeeds/Desired", speeds);
+    Logger.recordOutput("SwerveChassisSpeeds/Setpoints", previousSetpoint.robotRelativeSpeeds());
+    Logger.recordOutput("SwerveStates/TorqueFeedforwardAmps", torqueFeedforwardAmps);
 
-    // Send setpoints to modules
+    // Send setpoints to modules with the per-module torque feedforward from the generator.
     for (int i = 0; i < 4; i++) {
-      modules[i].runSetpoint(setpointStates[i]);
+      modules[i].runSetpoint(setpointStates[i], torqueFeedforwardAmps[i]);
     }
 
     // Log optimized setpoints (runSetpoint mutates each state)
@@ -289,6 +296,8 @@ public class Drive extends SubsystemBase {
     }
     kinematics.resetHeadings(headings);
     stop();
+    // X-stop puts modules in a state the setpoint generator doesn't know about — resync.
+    resetSetpoint();
   }
 
   /** Returns a command to run a quasistatic test in the specified direction. */
