@@ -66,9 +66,10 @@ public class Drive extends SubsystemBase {
               Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
   // PathPlanner config constants
-  private static final double ROBOT_MASS_KG = 50.0;
-  private static final double ROBOT_MOI = 6.883;
-  private static final double WHEEL_COF = 1.2;
+  // TODO: weigh the robot with bumpers + battery and update ROBOT_MASS_KG to actual value
+  private static final double ROBOT_MASS_KG = 63.5;
+  private static final double ROBOT_MOI = 6.5;
+  private static final double WHEEL_COF = 1.5; // WCP-1728 high-grip molded tread
   private static final RobotConfig PP_CONFIG =
       new RobotConfig(
           ROBOT_MASS_KG,
@@ -94,8 +95,11 @@ public class Drive extends SubsystemBase {
   private boolean shooterWasActive = false;
 
   private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
+  // Max steer rate set to match 6328's value (3 rot/s = 1080 deg/s). The PathPlanner default of
+  // 10 rot/s is fictional — no MK4/X2 module physically slews that fast, and a too-high value
+  // disables the SSG's drive-vs-steer coupling on diagonal/strafe direction reversals.
   private final SwerveSetpointGenerator setpointGenerator =
-      new SwerveSetpointGenerator(PP_CONFIG, Units.rotationsToRadians(10.0));
+      new SwerveSetpointGenerator(PP_CONFIG, Units.rotationsToRadians(3.0));
   private SwerveSetpoint previousSetpoint;
   private Rotation2d rawGyroRotation = Rotation2d.kZero;
   private SwerveModulePosition[] lastModulePositions = // For delta tracking
@@ -173,11 +177,14 @@ public class Drive extends SubsystemBase {
     }
     odometryLock.unlock();
 
-    // Stop moving when disabled
+    // Stop moving when disabled. Also reset previousSetpoint from measured state so re-enabling
+    // doesn't replay a stale setpoint and jolt the robot. Matches 6328 2025's pattern.
     if (DriverStation.isDisabled()) {
       for (var module : modules) {
         module.stop();
       }
+      previousSetpoint =
+          new SwerveSetpoint(getChassisSpeeds(), getModuleStates(), DriveFeedforwards.zeros(4));
     }
 
     // Log empty setpoint states when disabled
@@ -248,6 +255,14 @@ public class Drive extends SubsystemBase {
     // Run desired speeds through 254's kinematic constraint solver. Do NOT discretize the speeds
     // before passing them in — generateSetpoint() does its own discretization.
     previousSetpoint = setpointGenerator.generateSetpoint(previousSetpoint, speeds, 0.02);
+
+    // TEMP debug logs for slip current tuning. Compare CommandedVx (what you asked for) with
+    // PrevSetpointVx (what the SSG actually slewed to). On a fast direction reversal, Commanded
+    // should jump instantly while PrevSetpoint should ramp smoothly over many cycles. Remove
+    // these once tuning is complete.
+    Logger.recordOutput("SwerveDebug/CommandedVx", speeds.vxMetersPerSecond);
+    Logger.recordOutput(
+        "SwerveDebug/PrevSetpointVx", previousSetpoint.robotRelativeSpeeds().vxMetersPerSecond);
 
     SwerveModuleState[] setpointStates = previousSetpoint.moduleStates();
     double[] torqueFeedforwardAmps = previousSetpoint.feedforwards().torqueCurrentsAmps();

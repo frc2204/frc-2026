@@ -81,9 +81,9 @@ public class Module {
    * the swerve setpoint generator. Mutates the state to optimize it.
    */
   public void runSetpoint(SwerveModuleState state, double torqueFeedforwardAmps) {
-    // Optimize velocity setpoint
+    // Optimize velocity setpoint. The SSG already constrains angle changes per cycle to what the
+    // steer can physically achieve, so cosineScale is not needed (and would mismatch the torque FF).
     state.optimize(getAngle());
-    state.cosineScale(inputs.turnPosition);
 
     // Apply setpoints
     io.setDriveVelocity(state.speedMetersPerSecond / constants.WheelRadius, torqueFeedforwardAmps);

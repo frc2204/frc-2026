@@ -1,9 +1,12 @@
 package frc.robot.subsystems.leds;
 
 import com.ctre.phoenix6.configs.CANdleConfiguration;
+import com.ctre.phoenix6.controls.EmptyAnimation;
+import com.ctre.phoenix6.controls.LarsonAnimation;
 import com.ctre.phoenix6.controls.SingleFadeAnimation;
 import com.ctre.phoenix6.controls.SolidColor;
 import com.ctre.phoenix6.hardware.CANdle;
+import com.ctre.phoenix6.signals.LarsonBounceValue;
 import com.ctre.phoenix6.signals.RGBWColor;
 import com.ctre.phoenix6.signals.StripTypeValue;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -20,25 +23,40 @@ public class CANdleSubsystem extends SubsystemBase {
   private static final int CANDLE_ID = 10; // tune
   private static final int LED_START = 8; // first external LED (0-7 are onboard)
 
-  // Right strip: LEDs 8-32 (25 LEDs)
-  private static final int RIGHT_START = LED_START;
-  private static final int RIGHT_END = LED_START + 24; // inclusive — 25 LEDs
+  // ── Strip layout ─────────────────────────────────────────────────────────
+  // 4 strips wired in series, in this physical order along the data line:
+  //   1. front-right pole — wired bottom→top
+  //   2. front-left  pole — wired bottom→top
+  //   3. back-left   pole — wired top→bottom
+  //   4. back-right  pole — wired bottom→top
+  //
+  // EDIT THE COUNTS BELOW to match the real LED counts on each strip.
+  // Start indices auto-derive from the previous strip, so you only need to
+  // touch the *_COUNT values.
+  private static final int FRONT_RIGHT_COUNT = 25; // EDIT
+  private static final int FRONT_LEFT_COUNT = 25; // EDIT
+  private static final int BACK_LEFT_COUNT = 25; // EDIT
+  private static final int BACK_RIGHT_COUNT = 25; // EDIT
 
-  // Left strip: LEDs 33-55 (23 LEDs, continues from right)
-  private static final int LEFT_START = RIGHT_END + 1;
-  private static final int LEFT_END = LEFT_START + 22; // inclusive — 23 LEDs
+  private static final int FRONT_RIGHT_START = LED_START;
+  private static final int FRONT_RIGHT_END = FRONT_RIGHT_START + FRONT_RIGHT_COUNT - 1;
 
-  // Disabled-error Larson cycle.
-  // Phase 1: right bottom→top   (RIGHT_LEN steps)
-  // Phase 2: left  bottom→top   (LEFT_LEN  steps)
-  // Phase 3: left  top→bottom   (LEFT_LEN  steps)
-  // ↳ loops back to phase 1 (which the user described as "right bottom to top" again)
-  // If you want right to also bounce back (true 4-phase Larson), add a 4th phase
-  // that decrements RIGHT_END→RIGHT_START and bump LARSON_TOTAL_STEPS by RIGHT_LEN.
-  private static final int RIGHT_LEN = RIGHT_END - RIGHT_START + 1;
-  private static final int LEFT_LEN = LEFT_END - LEFT_START + 1;
-  private static final int LARSON_FRAMES_PER_STEP = 1; // bump for slower
-  private static final int LARSON_TOTAL_STEPS = RIGHT_LEN + LEFT_LEN + LEFT_LEN;
+  private static final int FRONT_LEFT_START = FRONT_RIGHT_END + 1;
+  private static final int FRONT_LEFT_END = FRONT_LEFT_START + FRONT_LEFT_COUNT - 1;
+
+  private static final int BACK_LEFT_START = FRONT_LEFT_END + 1;
+  private static final int BACK_LEFT_END = BACK_LEFT_START + BACK_LEFT_COUNT - 1;
+
+  private static final int BACK_RIGHT_START = BACK_LEFT_END + 1;
+  private static final int BACK_RIGHT_END = BACK_RIGHT_START + BACK_RIGHT_COUNT - 1;
+
+  // Full contiguous range — used by solid/fade controls that paint the whole rig.
+  private static final int STRIP_START = FRONT_RIGHT_START;
+  private static final int STRIP_END = BACK_RIGHT_END;
+
+  // Larson tuning — applied to all 4 per-strip Larsons.
+  private static final int LARSON_SIZE = 4; // EDIT — pocket of light, max 15
+  private static final double LARSON_FRAME_RATE = 60.0; // EDIT — Hz, [2, 1000]
 
   private static final RGBWColor OFF = new RGBWColor(0, 0, 0);
   private static final RGBWColor GREEN = new RGBWColor(0, 255, 0);
@@ -51,8 +69,20 @@ public class CANdleSubsystem extends SubsystemBase {
   private static final RGBWColor CYAN = new RGBWColor(0, 255, 255);
 
   private final CANdle candle;
-  private final SolidColor solidAll = new SolidColor(RIGHT_START, LEFT_END);
-  private final SingleFadeAnimation fadeAll = new SingleFadeAnimation(RIGHT_START, LEFT_END);
+  private final SolidColor solidAll = new SolidColor(STRIP_START, STRIP_END);
+  private final SingleFadeAnimation fadeAll = new SingleFadeAnimation(STRIP_START, STRIP_END);
+
+  // One hardware Larson per strip, each on its own slot. All 4 run in parallel
+  // on the CANdle — zero per-frame CAN traffic, smooth at LARSON_FRAME_RATE Hz.
+  // Slot assignments: front-right=0, front-left=1, back-left=2, back-right=3.
+  private final LarsonAnimation larsonFrontRight =
+      new LarsonAnimation(FRONT_RIGHT_START, FRONT_RIGHT_END).withSlot(0);
+  private final LarsonAnimation larsonFrontLeft =
+      new LarsonAnimation(FRONT_LEFT_START, FRONT_LEFT_END).withSlot(1);
+  private final LarsonAnimation larsonBackLeft =
+      new LarsonAnimation(BACK_LEFT_START, BACK_LEFT_END).withSlot(2);
+  private final LarsonAnimation larsonBackRight =
+      new LarsonAnimation(BACK_RIGHT_START, BACK_RIGHT_END).withSlot(3);
 
   private final TurretSubsystem turret;
   private final BooleanSupplier shootingToggledSupplier;
@@ -63,10 +93,6 @@ public class CANdleSubsystem extends SubsystemBase {
   private final com.ctre.phoenix6.CANBus rioBus = new com.ctre.phoenix6.CANBus("rio");
   private double lastHealthCheckTimestamp = 0.0;
   private boolean lastHealthResult = true;
-
-  // Disabled-error Larson scanner state.
-  private final SolidColor larsonBackground = new SolidColor(RIGHT_START, LEFT_END);
-  private int larsonFrame = 0;
 
   private LEDState lastState = null;
 
@@ -107,18 +133,23 @@ public class CANdleSubsystem extends SubsystemBase {
   public void periodic() {
     LEDState desired = determineState();
 
-    // DISABLED_ERROR runs a manually-stepped Larson scanner, so it needs to update
-    // every frame instead of only on state changes.
-    if (desired == LEDState.DISABLED_ERROR) {
-      if (lastState != LEDState.DISABLED_ERROR) {
-        lastState = LEDState.DISABLED_ERROR;
-        larsonFrame = 0;
-      }
-      updateErrorLarson();
-      return;
+    if (desired == lastState) return;
+
+    // Leaving DISABLED_ERROR populates 4 slots — slot 0 is handled below by
+    // the standard animation→solid clear, but slots 1-3 need explicit clearing
+    // or their Larsons keep running underneath whatever the new state paints.
+    if (lastState == LEDState.DISABLED_ERROR) {
+      candle.setControl(new EmptyAnimation(1));
+      candle.setControl(new EmptyAnimation(2));
+      candle.setControl(new EmptyAnimation(3));
     }
 
-    if (desired == lastState) return;
+    // Leaving an animation state for a solid-color state — clear slot 0,
+    // otherwise the old animation overlays the new solid color.
+    // (Animation→animation transitions are fine: the new animation replaces slot 0.)
+    if (isAnimationState(lastState) && !isAnimationState(desired)) {
+      candle.setControl(new EmptyAnimation(0));
+    }
     lastState = desired;
 
     switch (desired) {
@@ -127,8 +158,13 @@ public class CANdleSubsystem extends SubsystemBase {
         candle.setControl(fadeAll.withColor(GREEN).withFrameRate(80));
         break;
       case DISABLED_ERROR:
-        // Handled above, but keep a fallback so the switch is exhaustive.
-        candle.setControl(solidAll.withColor(RED));
+        // 4 synced bouncing red Larsons — one per pole, each on its own slot.
+        // All run on the CANdle hardware; one CAN frame per strip on entry,
+        // then zero RIO/CAN cost while the rig is in this state.
+        candle.setControl(applyLarsonStyle(larsonFrontRight));
+        candle.setControl(applyLarsonStyle(larsonFrontLeft));
+        candle.setControl(applyLarsonStyle(larsonBackLeft));
+        candle.setControl(applyLarsonStyle(larsonBackRight));
         break;
       case OFF:
       case IDLE:
@@ -162,6 +198,26 @@ public class CANdleSubsystem extends SubsystemBase {
         candle.setControl(solidAll.withColor(PURPLE));
         break;
     }
+  }
+
+  /** Applies the shared Larson style (color, size, bounce, frame rate) to a per-strip Larson. */
+  private static LarsonAnimation applyLarsonStyle(LarsonAnimation l) {
+    return l.withColor(RED)
+        .withSize(LARSON_SIZE)
+        .withBounceMode(LarsonBounceValue.Front)
+        .withFrameRate(LARSON_FRAME_RATE);
+  }
+
+  /**
+   * States that send a hardware animation (occupying CANdle animation slot 0, or 0-3 for
+   * DISABLED_ERROR). Used so we know when to send {@link EmptyAnimation} on transition out —
+   * otherwise the running animation overlays whatever solid color the next state paints.
+   */
+  private static boolean isAnimationState(LEDState s) {
+    return s == LEDState.DISABLED_OK
+        || s == LEDState.DISABLED_ERROR
+        || s == LEDState.READY_TO_FIRE
+        || s == LEDState.FIRING;
   }
 
   private LEDState determineState() {
@@ -223,32 +279,6 @@ public class CANdleSubsystem extends SubsystemBase {
     }
 
     return LEDState.IDLE;
-  }
-
-  /**
-   * Steps the disabled-error Larson scanner one frame. Called every periodic while in
-   * DISABLED_ERROR. Paints the strip OFF and lights a single head LED RED at the position derived
-   * from {@link #larsonFrame}.
-   */
-  private void updateErrorLarson() {
-    int step = (larsonFrame / LARSON_FRAMES_PER_STEP) % LARSON_TOTAL_STEPS;
-    larsonFrame++;
-
-    int headIdx;
-    if (step < RIGHT_LEN) {
-      // Phase 1: right strip bottom → top
-      headIdx = RIGHT_START + step;
-    } else if (step < RIGHT_LEN + LEFT_LEN) {
-      // Phase 2: left strip bottom → top
-      headIdx = LEFT_START + (step - RIGHT_LEN);
-    } else {
-      // Phase 3: left strip top → bottom
-      headIdx = LEFT_END - (step - RIGHT_LEN - LEFT_LEN);
-    }
-
-    // Background OFF, then head RED. Two setControl calls per loop is cheap.
-    candle.setControl(larsonBackground.withColor(OFF));
-    candle.setControl(new SolidColor(headIdx, headIdx).withColor(RED));
   }
 
   /** Checks system health while disabled. Throttled to 1 Hz to keep loop time bounded. */
