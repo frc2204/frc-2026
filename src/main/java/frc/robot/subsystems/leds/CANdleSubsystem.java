@@ -20,18 +20,30 @@ public class CANdleSubsystem extends SubsystemBase {
   private static final int CANDLE_ID = 10; // tune
   private static final int LED_START = 8; // first external LED (0-7 are onboard)
 
-  // Right strip: LEDs 8-33 (indices 8 to 8+25)
+  // Right strip: LEDs 8-32 (25 LEDs)
   private static final int RIGHT_START = LED_START;
-  private static final int RIGHT_END = LED_START + 25; // 26 LEDs (0-25)
+  private static final int RIGHT_END = LED_START + 24; // inclusive — 25 LEDs
 
-  // Left strip: LEDs 34-52 (indices 26-44, continues from right)
+  // Left strip: LEDs 33-55 (23 LEDs, continues from right)
   private static final int LEFT_START = RIGHT_END + 1;
-  private static final int LEFT_END = LED_START + 44; // 19 LEDs (26-44)
+  private static final int LEFT_END = LEFT_START + 22; // inclusive — 23 LEDs
+
+  // Disabled-error Larson cycle.
+  // Phase 1: right bottom→top   (RIGHT_LEN steps)
+  // Phase 2: left  bottom→top   (LEFT_LEN  steps)
+  // Phase 3: left  top→bottom   (LEFT_LEN  steps)
+  // ↳ loops back to phase 1 (which the user described as "right bottom to top" again)
+  // If you want right to also bounce back (true 4-phase Larson), add a 4th phase
+  // that decrements RIGHT_END→RIGHT_START and bump LARSON_TOTAL_STEPS by RIGHT_LEN.
+  private static final int RIGHT_LEN = RIGHT_END - RIGHT_START + 1;
+  private static final int LEFT_LEN = LEFT_END - LEFT_START + 1;
+  private static final int LARSON_FRAMES_PER_STEP = 1; // bump for slower
+  private static final int LARSON_TOTAL_STEPS = RIGHT_LEN + LEFT_LEN + LEFT_LEN;
 
   private static final RGBWColor OFF = new RGBWColor(0, 0, 0);
   private static final RGBWColor GREEN = new RGBWColor(0, 255, 0);
   private static final RGBWColor YELLOW = new RGBWColor(255, 180, 0);
-  private static final RGBWColor RED = new RGBWColor(255, 0, 0);
+  private static final RGBWColor RED = new RGBWColor(0xFF, 0x12, 0x0D); // #FF120D
   private static final RGBWColor PINK = new RGBWColor(255, 105, 180);
   private static final RGBWColor ORANGE = new RGBWColor(255, 80, 0);
   private static final RGBWColor PURPLE = new RGBWColor(128, 0, 255);
@@ -51,6 +63,10 @@ public class CANdleSubsystem extends SubsystemBase {
   private final com.ctre.phoenix6.CANBus rioBus = new com.ctre.phoenix6.CANBus("rio");
   private double lastHealthCheckTimestamp = 0.0;
   private boolean lastHealthResult = true;
+
+  // Disabled-error Larson scanner state.
+  private final SolidColor larsonBackground = new SolidColor(RIGHT_START, LEFT_END);
+  private int larsonFrame = 0;
 
   private LEDState lastState = null;
 
@@ -91,6 +107,17 @@ public class CANdleSubsystem extends SubsystemBase {
   public void periodic() {
     LEDState desired = determineState();
 
+    // DISABLED_ERROR runs a manually-stepped Larson scanner, so it needs to update
+    // every frame instead of only on state changes.
+    if (desired == LEDState.DISABLED_ERROR) {
+      if (lastState != LEDState.DISABLED_ERROR) {
+        lastState = LEDState.DISABLED_ERROR;
+        larsonFrame = 0;
+      }
+      updateErrorLarson();
+      return;
+    }
+
     if (desired == lastState) return;
     lastState = desired;
 
@@ -100,6 +127,7 @@ public class CANdleSubsystem extends SubsystemBase {
         candle.setControl(fadeAll.withColor(GREEN).withFrameRate(80));
         break;
       case DISABLED_ERROR:
+        // Handled above, but keep a fallback so the switch is exhaustive.
         candle.setControl(solidAll.withColor(RED));
         break;
       case OFF:
@@ -195,6 +223,32 @@ public class CANdleSubsystem extends SubsystemBase {
     }
 
     return LEDState.IDLE;
+  }
+
+  /**
+   * Steps the disabled-error Larson scanner one frame. Called every periodic while in
+   * DISABLED_ERROR. Paints the strip OFF and lights a single head LED RED at the position derived
+   * from {@link #larsonFrame}.
+   */
+  private void updateErrorLarson() {
+    int step = (larsonFrame / LARSON_FRAMES_PER_STEP) % LARSON_TOTAL_STEPS;
+    larsonFrame++;
+
+    int headIdx;
+    if (step < RIGHT_LEN) {
+      // Phase 1: right strip bottom → top
+      headIdx = RIGHT_START + step;
+    } else if (step < RIGHT_LEN + LEFT_LEN) {
+      // Phase 2: left strip bottom → top
+      headIdx = LEFT_START + (step - RIGHT_LEN);
+    } else {
+      // Phase 3: left strip top → bottom
+      headIdx = LEFT_END - (step - RIGHT_LEN - LEFT_LEN);
+    }
+
+    // Background OFF, then head RED. Two setControl calls per loop is cheap.
+    candle.setControl(larsonBackground.withColor(OFF));
+    candle.setControl(new SolidColor(headIdx, headIdx).withColor(RED));
   }
 
   /** Checks system health while disabled. Throttled to 1 Hz to keep loop time bounded. */

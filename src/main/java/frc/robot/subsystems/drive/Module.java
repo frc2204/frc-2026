@@ -77,8 +77,8 @@ public class Module {
   }
 
   /**
-   * Runs the module with the specified setpoint state and a torque-current feedforward (amps)
-   * from the swerve setpoint generator. Mutates the state to optimize it.
+   * Runs the module with the specified setpoint state and a torque-current feedforward (amps) from
+   * the swerve setpoint generator. Mutates the state to optimize it.
    */
   public void runSetpoint(SwerveModuleState state, double torqueFeedforwardAmps) {
     // Optimize velocity setpoint
@@ -86,8 +86,7 @@ public class Module {
     state.cosineScale(inputs.turnPosition);
 
     // Apply setpoints
-    io.setDriveVelocity(
-        state.speedMetersPerSecond / constants.WheelRadius, torqueFeedforwardAmps);
+    io.setDriveVelocity(state.speedMetersPerSecond / constants.WheelRadius, torqueFeedforwardAmps);
     if (Math.abs(state.speedMetersPerSecond) > 0.01) {
       io.setTurnPosition(state.angle);
     }
