@@ -130,7 +130,7 @@ public class HoodSubsystem extends SubsystemBase {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
       trenchMode = true;
     } else if (allianceX < FieldConstants.FIELDLENGTH - 3.5
-        && allianceX > FieldConstants.FIELDLENGTH - 6.5
+        && allianceX > FieldConstants.FIELDLENGTH - 7
         && inTrenchY) {
       hoodMotor.setControl(positionRequest.withPosition(0.0));
       trenchMode = true;

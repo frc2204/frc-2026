@@ -24,6 +24,7 @@ public class IntakeSubsystem extends SubsystemBase {
     STOWED,
     DEPLOYING,
     INTAKING,
+    DEPOT_INTAKING,
     EJECTING,
     IDLE_DEPLOYED,
     MANUAL
@@ -38,10 +39,11 @@ public class IntakeSubsystem extends SubsystemBase {
 
   private static final double STOW_POSITION = 0.023;
   private static final double DEPLOY_POSITION = 0.228516; // ~90 degrees in mechanism rotations
+  private static final double DEPOT_DEPLOY_POSITION = 0.166553; // TUNE — depot intake angle
 
   // Slot 0 — deploy (down)
   private static final double DEPLOY_KS = 0.25; // tune
-  private static final double DEPLOY_KP = 15.5; // tune
+  private static final double DEPLOY_KP = 50.5; // tune
   private static final double DEPLOY_KD = 0.1; // tune — dampens slam
   private static final double DEPLOY_KG =
       0.5; // tune — gravity compensation (volts to hold horizontal)
@@ -137,6 +139,10 @@ public class IntakeSubsystem extends SubsystemBase {
         deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setControl(rollerVelocityRequest.withVelocity(INTAKE_RPS));
         break;
+      case DEPOT_INTAKING:
+        deployMotor.setControl(motionMagicRequest.withPosition(DEPOT_DEPLOY_POSITION).withSlot(0));
+        rollerMotor.setControl(rollerVelocityRequest.withVelocity(INTAKE_RPS));
+        break;
       case EJECTING:
         deployMotor.setControl(motionMagicRequest.withPosition(DEPLOY_POSITION).withSlot(0));
         rollerMotor.setControl(rollerVelocityRequest.withVelocity(EJECT_RPS));
@@ -177,6 +183,10 @@ public class IntakeSubsystem extends SubsystemBase {
 
   public void intake() {
     setState(IntakeState.INTAKING);
+  }
+
+  public void depotIntake() {
+    setState(IntakeState.DEPOT_INTAKING);
   }
 
   public void idleDeploy() {

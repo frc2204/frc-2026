@@ -34,21 +34,21 @@ public class CANdleSubsystem extends SubsystemBase {
   // Start indices auto-derive from the previous strip, so you only need to
   // touch the *_COUNT values.
   private static final int FRONT_RIGHT_COUNT = 25; // EDIT
-  private static final int FRONT_LEFT_COUNT = 25; // EDIT
-  private static final int BACK_LEFT_COUNT = 25; // EDIT
-  private static final int BACK_RIGHT_COUNT = 25; // EDIT
+  private static final int FRONT_LEFT_COUNT = 20; // EDIT
+  private static final int BACK_LEFT_COUNT = 24; // EDIT
+  private static final int BACK_RIGHT_COUNT = 21; // EDIT
 
   private static final int FRONT_RIGHT_START = LED_START;
-  private static final int FRONT_RIGHT_END = FRONT_RIGHT_START + FRONT_RIGHT_COUNT - 1;
+  private static final int FRONT_RIGHT_END = FRONT_RIGHT_START + FRONT_RIGHT_COUNT - 0;
 
-  private static final int FRONT_LEFT_START = FRONT_RIGHT_END + 1;
-  private static final int FRONT_LEFT_END = FRONT_LEFT_START + FRONT_LEFT_COUNT - 1;
+  private static final int FRONT_LEFT_START = FRONT_RIGHT_END + 0;
+  private static final int FRONT_LEFT_END = FRONT_LEFT_START + FRONT_LEFT_COUNT - 0;
 
-  private static final int BACK_LEFT_START = FRONT_LEFT_END + 1;
-  private static final int BACK_LEFT_END = BACK_LEFT_START + BACK_LEFT_COUNT - 1;
+  private static final int BACK_LEFT_START = FRONT_LEFT_END + 0;
+  private static final int BACK_LEFT_END = BACK_LEFT_START + BACK_LEFT_COUNT - 0;
 
-  private static final int BACK_RIGHT_START = BACK_LEFT_END + 1;
-  private static final int BACK_RIGHT_END = BACK_RIGHT_START + BACK_RIGHT_COUNT - 1;
+  private static final int BACK_RIGHT_START = BACK_LEFT_END + 0;
+  private static final int BACK_RIGHT_END = BACK_RIGHT_START + BACK_RIGHT_COUNT - 0;
 
   // Full contiguous range — used by solid/fade controls that paint the whole rig.
   private static final int STRIP_START = FRONT_RIGHT_START;
@@ -161,10 +161,11 @@ public class CANdleSubsystem extends SubsystemBase {
         // 4 synced bouncing red Larsons — one per pole, each on its own slot.
         // All run on the CANdle hardware; one CAN frame per strip on entry,
         // then zero RIO/CAN cost while the rig is in this state.
-        candle.setControl(applyLarsonStyle(larsonFrontRight));
-        candle.setControl(applyLarsonStyle(larsonFrontLeft));
-        candle.setControl(applyLarsonStyle(larsonBackLeft));
-        candle.setControl(applyLarsonStyle(larsonBackRight));
+        //        candle.setControl(applyLarsonStyle(larsonFrontRight));
+        //        candle.setControl(applyLarsonStyle(larsonFrontLeft));
+        //        candle.setControl(applyLarsonStyle(larsonBackLeft));
+        //        candle.setControl(applyLarsonStyle(larsonBackRight));
+        candle.setControl(solidAll.withColor(RED));
         break;
       case OFF:
       case IDLE:
@@ -271,7 +272,8 @@ public class CANdleSubsystem extends SubsystemBase {
     }
 
     // Intake states
-    if (intakeState == IntakeSubsystem.IntakeState.INTAKING) {
+    if (intakeState == IntakeSubsystem.IntakeState.INTAKING
+        || intakeState == IntakeSubsystem.IntakeState.DEPOT_INTAKING) {
       return LEDState.INTAKING;
     }
     if (intakeState == IntakeSubsystem.IntakeState.EJECTING) {

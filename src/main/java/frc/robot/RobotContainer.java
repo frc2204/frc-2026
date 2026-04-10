@@ -10,6 +10,7 @@ package frc.robot;
 import static frc.robot.subsystems.vision.VisionConstants.*;
 
 import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.events.EventTrigger;
 import com.pathplanner.lib.path.PathConstraints;
 import com.pathplanner.lib.path.PathPlannerPath;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -32,7 +33,6 @@ import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-import frc.robot.commands.AdaptiveAutoCommand;
 import frc.robot.commands.ChaseBallCommand;
 import frc.robot.commands.DriveCommands;
 import frc.robot.commands.ShootingCommands;
@@ -176,6 +176,8 @@ public class RobotContainer {
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
         "deployIntake", Commands.runOnce(() -> intake.intake(), intake));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
+        "depotIntake", Commands.runOnce(() -> intake.depotIntake(), intake));
+    com.pathplanner.lib.auto.NamedCommands.registerCommand(
         "stowIntake", Commands.runOnce(() -> intake.stow(), intake));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
         "spinUpShooter", ShootingCommands.spinUp(shooter));
@@ -186,6 +188,18 @@ public class RobotContainer {
         Commands.runOnce(() -> shooter.setState(ShooterSubsystem.ShooterState.OVERRIDE), shooter));
     com.pathplanner.lib.auto.NamedCommands.registerCommand(
         "autoShoot", ShootingCommands.autoShoot(turret, shooter, hood, drive::getPose));
+
+    // Path event marker triggers. PathPlanner 2025+ does NOT auto-fire NamedCommands from path
+    // markers — markers only toggle EventTriggers keyed by name. NamedCommands are only used by
+    // .auto files. So any marker placed in a .path file (e.g. "depotIntake" in depot railer.path)
+    // needs an explicit EventTrigger subscription here.
+    new EventTrigger("depotIntake").onTrue(Commands.runOnce(() -> intake.depotIntake(), intake));
+    new EventTrigger("deployIntake").onTrue(Commands.runOnce(() -> intake.intake(), intake));
+    new EventTrigger("stowIntake").onTrue(Commands.runOnce(() -> intake.stow(), intake));
+    new EventTrigger("spinUpShooter").onTrue(ShootingCommands.spinUp(shooter));
+    new EventTrigger("idleShooter").onTrue(ShootingCommands.idle(shooter));
+    new EventTrigger("autoShoot")
+        .whileTrue(ShootingCommands.autoShoot(turret, shooter, hood, drive::getPose));
 
     // Set up auto routines
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
@@ -207,9 +221,10 @@ public class RobotContainer {
         "Drive SysId (Dynamic Reverse)", drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
 
     // Adaptive ball-chasing auto — draw "Ball Sweep" path in PathPlanner
-    autoChooser.addOption(
-        "Adaptive Ball Auto",
-        new AdaptiveAutoCommand(drive, objectDetection, intake, "Ball Sweep"));
+    // Commented out: needs Ball Sweep.path to exist in pathplanner/paths.
+    // autoChooser.addOption(
+    //     "Adaptive Ball Auto",
+    //     new AdaptiveAutoCommand(drive, objectDetection, intake, "Ball Sweep"));
 
     // Simple ball chase — just drives at any detected ball
     autoChooser.addOption("Chase Ball", new ChaseBallCommand(drive, objectDetection, intake));

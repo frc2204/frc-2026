@@ -49,7 +49,7 @@ public class TurretSubsystem extends SubsystemBase {
       new MotionMagicVoltage(0).withEnableFOC(true);
 
   private static final double MAX_ANGLE = 80;
-  private static final double MIN_ANGLE = -100;
+  private static final double MIN_ANGLE = -135;
   private static final double TURRET_FORWARD_OFFSET_RAD = Math.PI;
   private static final double MAX_VELOCITY_IN_DEG_PER_SEC = 38279.9988;
   private static final double MAX_ACCELERATION_IN_DEG_PER_SEC = 15000;
@@ -173,8 +173,8 @@ public class TurretSubsystem extends SubsystemBase {
     Translation2d turretFieldPos =
         robotPose.getTranslation().plus(robotToTurret.rotateBy(robotPose.getRotation()));
     //    HoodSubsystem.getInstance().setRobotPosex(turretFieldPos.getX());
-    HoodSubsystem.getInstance().setRobotPosex(robotPose.getX());
-    HoodSubsystem.getInstance().setRobotPoseY(robotPose.getY());
+    HoodSubsystem.getInstance().setRobotPosex(turretFieldPos.getX());
+    HoodSubsystem.getInstance().setRobotPoseY(turretFieldPos.getY());
 
     updateTargetPose();
 

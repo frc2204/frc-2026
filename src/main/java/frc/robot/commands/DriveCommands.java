@@ -32,6 +32,47 @@ import java.util.function.Supplier;
 
 public class DriveCommands {
   private static final double DEADBAND = 0.1;
+  // Master switch for joystick slew limiting. false = raw joystick passes straight through
+  // (like before any slew fix); true = DirectionalSlewRateLimiter active on X/Y and standard
+  // SlewRateLimiter on omega.
+  private static final boolean USE_JOYSTICK_SLEW_LIMIT = true;
+  // Slew rate (1/sec) applied ONLY when the commanded linear fraction is moving toward zero or
+  // flipping sign (deceleration / reversal). Acceleration away from zero passes through unlimited
+  // so a standing start still feels instant. Lower this if wheels slip on reversal.
+  private static final double JOYSTICK_LINEAR_SLEW_RATE = 7.0;
+  // Slew rate for joystick angular axis (1/sec). Higher because rotation slips less than linear.
+  private static final double JOYSTICK_ANGULAR_SLEW_RATE = 80.0;
+
+  /**
+   * Slew rate limiter that only activates when the target is moving toward zero or flipping sign.
+   * When the target is moving away from zero in the same direction as the current state (pure
+   * acceleration from rest), it passes through unlimited. This prevents wheel slip on hard
+   * direction reversals without capping standing-start acceleration.
+   */
+  private static final class DirectionalSlewRateLimiter {
+    private final double slewRatePerSec;
+    private double lastValue = 0.0;
+
+    DirectionalSlewRateLimiter(double slewRatePerSec) {
+      this.slewRatePerSec = slewRatePerSec;
+    }
+
+    double calculate(double target, double dt) {
+      // Same sign (includes lastValue == 0) AND magnitude is increasing → accelerating away
+      // from zero on the same side. Let it pass unlimited.
+      boolean sameSideOrFromZero = target * lastValue >= 0.0;
+      boolean magnitudeIncreasing = Math.abs(target) >= Math.abs(lastValue);
+      if (sameSideOrFromZero && magnitudeIncreasing) {
+        lastValue = target;
+      } else {
+        // Decelerating toward zero, or flipping across zero. Apply the rate limit.
+        double maxDelta = slewRatePerSec * dt;
+        lastValue += MathUtil.clamp(target - lastValue, -maxDelta, maxDelta);
+      }
+      return lastValue;
+    }
+  }
+
   private static final double ANGLE_KP = 5.0;
   private static final double ANGLE_KD = 0.4;
   private static final double ANGLE_MAX_VELOCITY = 8.0;
@@ -65,6 +106,14 @@ public class DriveCommands {
       DoubleSupplier xSupplier,
       DoubleSupplier ySupplier,
       DoubleSupplier omegaSupplier) {
+    // X/Y use a DIRECTIONAL limiter: unlimited when accelerating away from zero (standing
+    // start stays snappy), rate-limited only when decelerating toward zero or flipping sign
+    // (the case that slips wheels due to weight transfer and back-EMF).
+    DirectionalSlewRateLimiter xLimiter = new DirectionalSlewRateLimiter(
+            JOYSTICK_LINEAR_SLEW_RATE);
+    DirectionalSlewRateLimiter yLimiter = new DirectionalSlewRateLimiter(JOYSTICK_LINEAR_SLEW_RATE);
+    SlewRateLimiter omegaLimiter = new SlewRateLimiter(JOYSTICK_ANGULAR_SLEW_RATE);
+
     return Commands.run(
         () -> {
           // Get linear velocity
@@ -77,12 +126,26 @@ public class DriveCommands {
           // Square rotation value for more precise control
           omega = Math.copySign(omega * omega, omega);
 
+          // Apply slew limiting if enabled; otherwise pass raw joystick through unchanged.
+          double limitedX;
+          double limitedY;
+          double limitedOmega;
+          if (USE_JOYSTICK_SLEW_LIMIT) {
+            limitedX = xLimiter.calculate(linearVelocity.getX(), 0.02);
+            limitedY = yLimiter.calculate(linearVelocity.getY(), 0.02);
+            limitedOmega = omegaLimiter.calculate(omega);
+          } else {
+            limitedX = linearVelocity.getX();
+            limitedY = linearVelocity.getY();
+            limitedOmega = omega;
+          }
+
           // Convert to field relative speeds & send command
           ChassisSpeeds speeds =
               new ChassisSpeeds(
-                  linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                  linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                  omega * drive.getMaxAngularSpeedRadPerSec());
+                  limitedX * drive.getMaxLinearSpeedMetersPerSec(),
+                  limitedY * drive.getMaxLinearSpeedMetersPerSec(),
+                  limitedOmega * drive.getMaxAngularSpeedRadPerSec());
           boolean isFlipped =
               DriverStation.getAlliance().isPresent()
                   && DriverStation.getAlliance().get() == Alliance.Red;

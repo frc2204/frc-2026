@@ -248,7 +248,7 @@ public class ShooterSubsystem extends SubsystemBase {
         shooterMotor.setControl(velocityRequest.withVelocity(targetRPS).withSlot(activeSlot));
         break;
       case PASSING:
-        shooterMotor.setControl(voltageRequest.withOutput(10.0)); // full voltage for passing
+        shooterMotor.setControl(voltageRequest.withOutput(12.0)); // full voltage for passing
         break;
       case IDLE:
       case EMPTY:
