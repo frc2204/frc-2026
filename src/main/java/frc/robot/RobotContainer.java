@@ -117,6 +117,7 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
+                drive::getPose,
                 () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
                 //                new VisionIOLimelight(camera0Name, drive::getRotation),
                 new VisionIOLimelight(camera1Name, drive::getRotation),
@@ -138,6 +139,7 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
+                drive::getPose,
                 () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
                 new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose));
         turret = new TurretSubsystem(drive::getPose, drive::getChassisSpeeds);
@@ -156,6 +158,7 @@ public class RobotContainer {
         vision =
             new Vision(
                 drive::addVisionMeasurement,
+                drive::getPose,
                 () -> drive.getChassisSpeeds().omegaRadiansPerSecond,
                 new VisionIO() {},
                 new VisionIO() {});

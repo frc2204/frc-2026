@@ -109,8 +109,7 @@ public class DriveCommands {
     // X/Y use a DIRECTIONAL limiter: unlimited when accelerating away from zero (standing
     // start stays snappy), rate-limited only when decelerating toward zero or flipping sign
     // (the case that slips wheels due to weight transfer and back-EMF).
-    DirectionalSlewRateLimiter xLimiter = new DirectionalSlewRateLimiter(
-            JOYSTICK_LINEAR_SLEW_RATE);
+    DirectionalSlewRateLimiter xLimiter = new DirectionalSlewRateLimiter(JOYSTICK_LINEAR_SLEW_RATE);
     DirectionalSlewRateLimiter yLimiter = new DirectionalSlewRateLimiter(JOYSTICK_LINEAR_SLEW_RATE);
     SlewRateLimiter omegaLimiter = new SlewRateLimiter(JOYSTICK_ANGULAR_SLEW_RATE);
 

@@ -23,21 +23,69 @@ import frc.robot.subsystems.vision.VisionIO.PoseObservationType;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * Subsystem that processes AprilTag observations from multiple cameras and feeds filtered, weighted
+ * pose estimates into the drive subsystem's SwerveDrivePoseEstimator.
+ *
+ * <p>DATA FLOW:
+ *
+ * <ol>
+ *   <li>Each VisionIO (one per camera) produces raw PoseObservations via NetworkTables
+ *   <li>This class filters them (rejection checks) and computes per-observation standard deviations
+ *   <li>Accepted observations are passed to the VisionConsumer (Drive::addVisionMeasurement)
+ *   <li>The SwerveDrivePoseEstimator fuses them with odometry using a Kalman filter
+ * </ol>
+ *
+ * <p>ANTI-OSCILLATION: When multiple cameras disagree on the robot's pose, the estimator can
+ * ping-pong between them. Three defenses prevent this:
+ *
+ * <ol>
+ *   <li>Pose sanity check — reject observations > maxPoseDisagreement from current estimate
+ *   <li>Gyro rate rejection — reject all vision above maxGyroRateForVision (blurry frames)
+ *   <li>Camera trust differentiation — LL4 gets ~3x more weight than LL3 via cameraStdDevFactors
+ * </ol>
+ *
+ * <p>See VisionConstants.java for all tuning values, reference values from top teams, and a tuning
+ * guide.
+ */
 public class Vision extends SubsystemBase {
   private final VisionConsumer consumer;
+  private final Supplier<Pose2d> poseSupplier; // Current estimated pose, for sanity checking
   private final VisionIO[] io;
   private final VisionIOInputsAutoLogged[] inputs;
   private final Alert[] disconnectedAlerts;
-  private final DoubleSupplier gyroRateSupplier;
+  private final DoubleSupplier gyroRateSupplier; // Robot angular velocity in rad/s
 
+  /** Convenience constructor with no pose or gyro rate info (for testing/replay). */
   public Vision(VisionConsumer consumer, VisionIO... io) {
-    this(consumer, () -> 0.0, io);
+    this(consumer, Pose2d::new, () -> 0.0, io);
   }
 
-  public Vision(VisionConsumer consumer, DoubleSupplier gyroRateSupplier, VisionIO... io) {
+  /**
+   * Full constructor. In RobotContainer, typically called as:
+   *
+   * <pre>
+   * new Vision(drive::addVisionMeasurement, drive::getPose,
+   *            () -> drive.getChassisSpeeds().omegaRadiansPerSecond, visionIO1, visionIO2, ...)
+   * </pre>
+   *
+   * @param consumer Callback that feeds accepted poses into the pose estimator
+   * @param poseSupplier Current estimated robot pose, used for the pose sanity check
+   * @param gyroRateSupplier Current robot angular velocity in rad/s, used for gyro rate rejection
+   *     and stddev scaling
+   * @param io One VisionIO per camera. Array index determines which cameraStdDevFactors entry is
+   *     used.
+   */
+  public Vision(
+      VisionConsumer consumer,
+      Supplier<Pose2d> poseSupplier,
+      DoubleSupplier gyroRateSupplier,
+      VisionIO... io) {
     this.consumer = consumer;
+    this.poseSupplier = poseSupplier;
     this.gyroRateSupplier = gyroRateSupplier;
     this.io = io;
 
@@ -97,29 +145,55 @@ public class Vision extends SubsystemBase {
         }
       }
 
-      // Loop over pose observations
+      // Loop over pose observations from this camera.
+      // Each VisionIOLimelight produces one MT2 observation per frame (MT1 is skipped).
       for (var observation : inputs[cameraIndex].poseObservations) {
-        // Determine single-tag distance limit based on camera type
+        // LL4 (global shutter) cameras are identified by having a cameraStdDevFactor < 1.0.
+        // They get a longer single-tag range because global shutter = less distortion at distance.
         double singleTagLimit =
             (cameraIndex < cameraStdDevFactors.length && cameraStdDevFactors[cameraIndex] < 1.0)
                 ? maxSingleTagDistanceLL4
                 : maxSingleTagDistance;
 
-        // Check whether to reject pose
+        // --- REJECTION CHECKS ---
+        // Any observation that fails these is discarded entirely (not fed to the estimator).
+        // Rejected observations are still logged to Vision/Camera*/RobotPosesRejected for
+        // debugging in AdvantageScope. If too many observations are being rejected, check
+        // these thresholds in VisionConstants.java.
         boolean rejectPose =
-            observation.tagCount() == 0 // Must have at least one tag
+            // Basic validity: must see at least one tag
+            observation.tagCount() == 0
+                // Single-tag PnP can produce two valid solutions (ambiguity). High ambiguity
+                // means the solver can't tell which is correct. Multi-tag doesn't have this
+                // problem because multiple tags constrain the solution uniquely.
+                || (observation.tagCount() == 1 && observation.ambiguity() > maxAmbiguity)
+                // Single-tag accuracy degrades with distance. Multi-tag is fine farther out.
                 || (observation.tagCount() == 1
-                    && observation.ambiguity() > maxAmbiguity) // Cannot be high ambiguity
-                || (observation.tagCount() == 1
-                    && observation.averageTagDistance() > singleTagLimit) // Single tag too far away
-                || Math.abs(observation.pose().getZ())
-                    > maxZError // Must have realistic Z coordinate
-
-                // Must be within the field boundaries
+                    && observation.averageTagDistance() > singleTagLimit)
+                // Z should be near 0 for a robot on a flat field. Large Z = bad solve.
+                || Math.abs(observation.pose().getZ()) > maxZError
+                // Pose must be within the field boundaries (with no margin — could add 0.5m)
                 || observation.pose().getX() < 0.0
                 || observation.pose().getX() > aprilTagLayout.getFieldLength()
                 || observation.pose().getY() < 0.0
-                || observation.pose().getY() > aprilTagLayout.getFieldWidth();
+                || observation.pose().getY() > aprilTagLayout.getFieldWidth()
+                // GYRO RATE REJECTION: when the robot is spinning fast, rolling shutter cameras
+                // (LL3) produce smeared frames that give wildly wrong poses. LL4 global shutter
+                // is better but still degrades. 3847 Spectrum uses 1.6 rad/s as their threshold.
+                // Below this threshold, stddevs are still scaled up by omega (see below).
+                || Math.abs(gyroRateSupplier.getAsDouble()) > maxGyroRateForVision
+                // POSE SANITY CHECK: reject observations that disagree too much with the current
+                // estimated pose. This is the primary defense against multi-camera oscillation.
+                // Without this, if camera A says X=5.0 and camera B says X=5.1, the estimator
+                // ping-pongs between them every cycle. With this, once the estimator settles,
+                // outlier observations get rejected instead of causing oscillation.
+                // 254 uses yaw-diff + tag-area checks; 3847 uses 0.25-0.5m; 1678 uses 2.0m.
+                || observation
+                        .pose()
+                        .toPose2d()
+                        .getTranslation()
+                        .getDistance(poseSupplier.get().getTranslation())
+                    > maxPoseDisagreement;
 
         // Add pose to log
         robotPoses.add(observation.pose());
@@ -134,29 +208,57 @@ public class Vision extends SubsystemBase {
           continue;
         }
 
-        // Calculate standard deviations
-        // Scale by distance^1.5 and inversely by tagCount² (6328 uses distance^1.2)
-        // Multi-tag observations are much more trustworthy than single-tag
+        // --- STANDARD DEVIATION CALCULATION ---
+        // The std dev tells the Kalman filter how much to trust this observation.
+        // Higher stddev = less trust = estimator changes less. Lower = more trust = faster update.
+        //
+        // Formula: baseline * (distance^exponent / tagCount^2) * megatag2Factor * cameraFactor
+        //          * omegaFactor
+        //
+        // Why tagCount^2 (not linear): multi-tag observations are geometrically much more
+        // constrained than single-tag. The squared divisor reflects this — 2 tags = 4x more
+        // trusted, 3 tags = 9x. 6328 uses the same tagCount^2 scaling.
         double distFactor = Math.pow(observation.averageTagDistance(), distanceExponent);
         double tagFactor = Math.pow(observation.tagCount(), 2.0);
         double stdDevFactor = distFactor / tagFactor;
         double linearStdDev = linearStdDevBaseline * stdDevFactor;
         double angularStdDev = angularStdDevBaseline * stdDevFactor;
+
+        // MT2 (gyro-constrained) observations get tighter linear stddevs because the rotation
+        // is fixed from the gyro, making the translation solve more stable. The angular
+        // component is set to INFINITY because MT2's rotation IS the gyro input — trusting
+        // it would be circular.
         if (observation.type() == PoseObservationType.MEGATAG_2) {
           linearStdDev *= linearStdDevMegatag2Factor;
           angularStdDev *= angularStdDevMegatag2Factor;
         }
+
+        // Per-camera trust weighting. LL4 (global shutter, factor=0.5) gets ~3x more weight
+        // than LL3 (rolling shutter, factor=1.5). This is the main mechanism that resolves
+        // multi-camera disagreement — the estimator preferentially follows the better camera.
         if (cameraIndex < cameraStdDevFactors.length) {
           linearStdDev *= cameraStdDevFactors[cameraIndex];
           angularStdDev *= cameraStdDevFactors[cameraIndex];
         }
 
-        // Scale up stddevs when robot is spinning — camera frames are blurry
+        // SINGLE-TAG ANGULAR INFINITY: single-tag PnP rotation estimates are unreliable,
+        // especially at distance or with rolling shutter. Setting angular stddev to infinity
+        // means "only use this observation for XY translation, not rotation." The gyro handles
+        // rotation much more accurately. Every top team does this (6328, 1678, 3847).
+        if (observation.tagCount() == 1) {
+          angularStdDev = Double.POSITIVE_INFINITY;
+        }
+
+        // OMEGA SCALING: even below the hard rejection threshold, camera frames degrade
+        // with rotation speed. This linearly scales stddevs up with omega, making the
+        // estimator trust vision less during turns without rejecting entirely.
         double omegaFactor = 1.0 + 2.0 * Math.abs(gyroRateSupplier.getAsDouble());
         linearStdDev *= omegaFactor;
         angularStdDev *= omegaFactor;
 
-        // Send vision observation
+        // Feed the accepted, weighted observation into the SwerveDrivePoseEstimator.
+        // The estimator uses the stddevs to compute Kalman gains — low stddev = big correction,
+        // high stddev = small correction, infinity = ignored for that dimension.
         consumer.accept(
             observation.pose().toPose2d(),
             observation.timestamp(),

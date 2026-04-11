@@ -22,7 +22,31 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
-/** IO implementation for real Limelight hardware. */
+/**
+ * IO implementation for real Limelight hardware. Reads AprilTag pose observations via
+ * NetworkTables.
+ *
+ * <p>MEGATAG 1 vs MEGATAG 2:
+ *
+ * <ul>
+ *   <li>MT1 ("botpose_wpiblue"): Full 3D PnP solve. Computes both translation AND rotation from tag
+ *       geometry alone. More noisy, especially with rolling shutter (LL3). Can have high ambiguity
+ *       with single tags.
+ *   <li>MT2 ("botpose_orb_wpiblue"): Gyro-constrained solve. We send the gyro rotation to the
+ *       Limelight via "robot_orientation_set", and MT2 uses it as a constraint — it only solves for
+ *       translation. This produces more stable poses because the gyro rotation is much more
+ *       accurate than PnP rotation.
+ * </ul>
+ *
+ * <p>WHY WE ONLY USE MT2: Using both MT1 and MT2 from the same camera causes the pose estimator to
+ * oscillate — they compute slightly different poses (different solve methods), and feeding both
+ * gives the Kalman filter conflicting data every cycle. MT2 is strictly more stable for
+ * translation, and we don't need MT1's rotation (the gyro is better). This matches 1678's 2025
+ * approach (MT2 only).
+ *
+ * <p>The MT1 subscriber is still read (readQueue) to drain the buffer and extract tag IDs for
+ * logging, but its pose observations are not consumed.
+ */
 public class VisionIOLimelight implements VisionIO {
   private final Supplier<Rotation2d> rotationSupplier;
   private final DoubleArrayPublisher orientationPublisher;
@@ -30,8 +54,8 @@ public class VisionIOLimelight implements VisionIO {
   private final DoubleSubscriber latencySubscriber;
   private final DoubleSubscriber txSubscriber;
   private final DoubleSubscriber tySubscriber;
-  private final DoubleArraySubscriber megatag1Subscriber;
-  private final DoubleArraySubscriber megatag2Subscriber;
+  private final DoubleArraySubscriber megatag1Subscriber; // Drained but not consumed (see above)
+  private final DoubleArraySubscriber megatag2Subscriber; // Primary pose source
 
   /**
    * Creates a new VisionIOLimelight.
@@ -63,7 +87,10 @@ public class VisionIOLimelight implements VisionIO {
         new TargetObservation(
             Rotation2d.fromDegrees(txSubscriber.get()), Rotation2d.fromDegrees(tySubscriber.get()));
 
-    // Update orientation for MegaTag 2
+    // Send the current gyro rotation to the Limelight for MegaTag 2.
+    // MT2 uses this as a rotation constraint — it fixes the rotation and only solves for
+    // translation, which is why MT2 poses are more stable than MT1. The array format is
+    // [yaw, yawRate, pitch, pitchRate, roll, rollRate] — we only send yaw (degrees).
     orientationPublisher.accept(
         new double[] {rotationSupplier.get().getDegrees(), 0.0, 0.0, 0.0, 0.0, 0.0});
     NetworkTableInstance.getDefault()
@@ -72,31 +99,15 @@ public class VisionIOLimelight implements VisionIO {
     // Read new pose observations from NetworkTables
     Set<Integer> tagIds = new HashSet<>();
     List<PoseObservation> poseObservations = new LinkedList<>();
+    // MT1 (full 3D PnP) is skipped — MT2 is more stable for pose estimation because it
+    // constrains rotation from the gyro. Using both MT1+MT2 causes the estimator to oscillate
+    // when they disagree. Only drain the queue so it doesn't build up stale data.
     for (var rawSample : megatag1Subscriber.readQueue()) {
       if (rawSample.value.length < 11) continue;
       for (int i = 11; i < rawSample.value.length; i += 7) {
         tagIds.add((int) rawSample.value[i]);
       }
-      poseObservations.add(
-          new PoseObservation(
-              // Timestamp, based on server timestamp of publish and latency
-              rawSample.timestamp * 1.0e-6 - rawSample.value[6] * 1.0e-3,
-
-              // 3D pose estimate
-              parsePose(rawSample.value),
-
-              // Ambiguity, using only the first tag because ambiguity isn't applicable for
-              // multitag
-              rawSample.value.length >= 18 ? rawSample.value[17] : 0.0,
-
-              // Tag count
-              (int) rawSample.value[7],
-
-              // Average tag distance
-              rawSample.value[9],
-
-              // Observation type
-              PoseObservationType.MEGATAG_1));
+      // Tag IDs still tracked for logging, but pose is not consumed.
     }
     for (var rawSample : megatag2Subscriber.readQueue()) {
       if (rawSample.value.length < 11) continue;
